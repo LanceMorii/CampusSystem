@@ -62,24 +62,24 @@ INSERT INTO users (student_id, username, password, real_name, phone, email, avat
 -- 插入测试商品数据 (使用动态分类ID)
 INSERT INTO products (user_id, category_id, title, description, price, original_price, images, view_count, status) VALUES
 -- 电子产品 (假设手机数码分类ID为7)
-(1, 7, 'iPhone 13 128GB 蓝色', '9成新iPhone 13，无磕碰，功能正常，配件齐全', 4500.00, 5999.00, '["https://example.com/images/iphone13_1.jpg", "https://example.com/images/iphone13_2.jpg"]', 25, 1),
-(2, 8, '联想ThinkPad E14 笔记本', '用了一年的笔记本，i5处理器，8G内存，256G固态硬盘', 3200.00, 4999.00, '["https://example.com/images/thinkpad_1.jpg"]', 18, 1),
-(3, 9, 'AirPods Pro 2代', '全新未拆封，朋友送的多了一个', 1800.00, 1999.00, '["https://example.com/images/airpods_1.jpg"]', 32, 1),
+(1, 7, 'iPhone 13 128GB 蓝色', '9成新iPhone 13，无磕碰，功能正常，配件齐全', 4500.00, 5999.00, JSON_ARRAY('https://example.com/images/iphone13_1.jpg', 'https://example.com/images/iphone13_2.jpg'), 25, 1),
+(2, 8, '联想ThinkPad E14 笔记本', '用了一年的笔记本，i5处理器，8G内存，256G固态硬盘', 3200.00, 4999.00, JSON_ARRAY('https://example.com/images/thinkpad_1.jpg'), 18, 1),
+(3, 9, 'AirPods Pro 2代', '全新未拆封，朋友送的多了一个', 1800.00, 1999.00, JSON_ARRAY('https://example.com/images/airpods_1.jpg'), 32, 1),
 
 -- 图书教材
-(2, 11, '高等数学教材（上下册）', '同济大学版高等数学，9成新，有少量笔记', 45.00, 89.00, '["https://example.com/images/math_book.jpg"]', 12, 1),
-(4, 12, '英语四级真题集', '星火英语四级真题，做过几套，答案完整', 15.00, 35.00, '["https://example.com/images/cet4_book.jpg"]', 8, 1),
+(2, 11, '高等数学教材（上下册）', '同济大学版高等数学，9成新，有少量笔记', 45.00, 89.00, JSON_ARRAY('https://example.com/images/math_book.jpg'), 12, 1),
+(4, 12, '英语四级真题集', '星火英语四级真题，做过几套，答案完整', 15.00, 35.00, JSON_ARRAY('https://example.com/images/cet4_book.jpg'), 8, 1),
 
 -- 生活用品
-(1, 15, '宿舍小冰箱', '美的小冰箱，容量50L，制冷效果好', 280.00, 399.00, '["https://example.com/images/fridge_1.jpg", "https://example.com/images/fridge_2.jpg"]', 15, 1),
-(5, 16, '兰蔻粉水套装', '朋友代购的，不适合我的肤质，9成新', 320.00, 450.00, '["https://example.com/images/lancome_1.jpg"]', 22, 1),
+(1, 15, '宿舍小冰箱', '美的小冰箱，容量50L，制冷效果好', 280.00, 399.00, JSON_ARRAY('https://example.com/images/fridge_1.jpg', 'https://example.com/images/fridge_2.jpg'), 15, 1),
+(5, 16, '兰蔻粉水套装', '朋友代购的，不适合我的肤质，9成新', 320.00, 450.00, JSON_ARRAY('https://example.com/images/lancome_1.jpg'), 22, 1),
 
 -- 服装配饰
-(3, 19, 'Nike运动外套', 'L码，深蓝色，穿过几次，无破损', 180.00, 299.00, '["https://example.com/images/nike_jacket.jpg"]', 9, 1),
-(4, 21, 'Adidas运动鞋', '42码，黑白配色，鞋底磨损轻微', 220.00, 399.00, '["https://example.com/images/adidas_shoes.jpg"]', 14, 1),
+(3, 19, 'Nike运动外套', 'L码，深蓝色，穿过几次，无破损', 180.00, 299.00, JSON_ARRAY('https://example.com/images/nike_jacket.jpg'), 9, 1),
+(4, 21, 'Adidas运动鞋', '42码，黑白配色，鞋底磨损轻微', 220.00, 399.00, JSON_ARRAY('https://example.com/images/adidas_shoes.jpg'), 14, 1),
 
 -- 运动健身
-(5, 23, '哑铃套装', '可调节哑铃，5-20kg，适合宿舍健身', 150.00, 280.00, '["https://example.com/images/dumbbell.jpg"]', 7, 1);
+(5, 23, '哑铃套装', '可调节哑铃，5-20kg，适合宿舍健身', 150.00, 280.00, JSON_ARRAY('https://example.com/images/dumbbell.jpg'), 7, 1);
 
 -- 插入测试订单数据
 INSERT INTO orders (order_no, buyer_id, seller_id, product_id, amount, status, buyer_confirm, seller_confirm, remark) VALUES
