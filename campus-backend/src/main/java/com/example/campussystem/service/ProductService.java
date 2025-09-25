@@ -114,6 +114,66 @@ public class ProductService {
     }
 
     /**
+     * 保存商品草稿
+     */
+    public ProductResponse saveDraft(ProductRequest request, Long userId) {
+        // 验证用户是否存在
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException("用户不存在"));
+
+        // 验证分类是否存在
+        Category category = categoryRepository.findById(request.getCategoryId())
+                .orElseThrow(() -> new BusinessException("商品分类不存在"));
+
+        // 创建商品实体
+        Product product = new Product();
+        product.setUserId(userId);
+        product.setCategoryId(request.getCategoryId());
+        product.setTitle(request.getTitle());
+        product.setDescription(request.getDescription());
+        product.setPrice(request.getPrice());
+        product.setOriginalPrice(request.getOriginalPrice());
+        product.setStatus(2); // 草稿状态
+
+        // 处理图片数据 - 直接存储为JSON数组格式
+        if (request.getImages() != null && !request.getImages().isEmpty()) {
+            try {
+                // 直接将List转换为JSON字符串，不会产生双重引号
+                product.setImages(objectMapper.writeValueAsString(request.getImages()));
+            } catch (JsonProcessingException e) {
+                throw new BusinessException("图片数据格式错误");
+            }
+        } else {
+            product.setImages("[]"); // 空数组
+        }
+
+        // 设置商品详细信息
+        product.setBrand(request.getBrand());
+        product.setModel(request.getModel());
+        product.setColor(request.getColor());
+        product.setSize(request.getSize());
+        product.setPurchaseTime(request.getPurchaseTime());
+        product.setCondition(request.getCondition());
+        product.setPurchaseLocation(request.getPurchaseLocation());
+        product.setTradeNotes(request.getTradeNotes());
+        product.setIsNegotiable(request.getIsNegotiable());
+        product.setIncludeInvoice(request.getIncludeInvoice());
+        product.setIncludeWarranty(request.getIncludeWarranty());
+        product.setTags(request.getTags());
+
+        // 保存商品
+        Product savedProduct = productRepository.save(product);
+
+        // 清除相关缓存
+        clearProductCaches(savedProduct.getCategoryId(), userId);
+
+        // 设置关联信息并返回
+        savedProduct.setUser(user);
+        savedProduct.setCategory(category);
+        return new ProductResponse(savedProduct);
+    }
+
+    /**
      * 更新商品信息
      */
     public ProductResponse updateProduct(Long productId, ProductRequest request, Long userId) {
@@ -191,6 +251,20 @@ public class ProductService {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new BusinessException("商品不存在"));
 
+        // 加载关联的用户信息
+        User user = userRepository.findById(product.getUserId())
+                .orElse(null);
+        if (user != null) {
+            product.setUser(user);
+        }
+
+        // 加载关联的分类信息
+        Category category = categoryRepository.findById(product.getCategoryId())
+                .orElse(null);
+        if (category != null) {
+            product.setCategory(category);
+        }
+
         // 增加浏览次数
         product.incrementViewCount();
         productRepository.save(product);
@@ -215,6 +289,18 @@ public class ProductService {
         cacheService.deleteByPattern(CACHE_KEY_POPULAR_PRODUCTS + "*");
         // 清除最新商品缓存
         cacheService.deleteByPattern(CACHE_KEY_LATEST_PRODUCTS + "*");
+    }
+
+    /**
+     * 增加商品浏览次数
+     */
+    public void incrementViewCount(Long productId) {
+        productRepository.findById(productId).ifPresent(product -> {
+            product.incrementViewCount();
+            productRepository.save(product);
+            // 清除缓存，下次查询时重新缓存
+            cacheService.delete(CACHE_KEY_PRODUCT_DETAIL + productId);
+        });
     }
 
     /**
@@ -309,12 +395,68 @@ public class ProductService {
         Pageable pageable = PageRequest.of(page, size, sort);
         
         Page<Product> products = productRepository.findByCategoryIdAndStatus(categoryId, 1, pageable);
-        Page<ProductResponse> result = products.map(ProductResponse::new);
+        
+        // 为每个商品加载用户信息
+        Page<ProductResponse> result = products.map(product -> {
+            // 加载关联的用户信息
+            User user = userRepository.findById(product.getUserId()).orElse(null);
+            if (user != null) {
+                product.setUser(user);
+            }
+            
+            // 加载关联的分类信息
+            Category category = categoryRepository.findById(product.getCategoryId()).orElse(null);
+            if (category != null) {
+                product.setCategory(category);
+            }
+            
+            return new ProductResponse(product);
+        });
         
         // 缓存分类商品，缓存20分钟
         cacheService.set(cacheKey, result, 20, java.util.concurrent.TimeUnit.MINUTES);
         
         return result;
+    }
+
+    /**
+     * 获取用户发布的商品列表（支持分页和筛选）
+     */
+    @Transactional(readOnly = true)
+    public Page<ProductResponse> getUserProductsWithPagination(Long userId, int page, int size, Integer status, String title) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createTime"));
+        
+        Page<Product> products;
+        if (status != null && title != null && !title.trim().isEmpty()) {
+            // 同时按状态和标题筛选
+            products = productRepository.findByUserIdAndStatusAndTitleContainingIgnoreCase(userId, status, title.trim(), pageable);
+        } else if (status != null) {
+            // 只按状态筛选
+            products = productRepository.findByUserIdAndStatus(userId, status, pageable);
+        } else if (title != null && !title.trim().isEmpty()) {
+            // 只按标题筛选
+            products = productRepository.findByUserIdAndTitleContainingIgnoreCaseAndStatusNot(userId, title.trim(), 0, pageable);
+        } else {
+            // 不筛选，只排除已删除的商品
+            products = productRepository.findByUserIdAndStatusNot(userId, 0, pageable);
+        }
+        
+        // 转换为响应对象
+        return products.map(product -> {
+            // 加载关联的用户信息
+            User user = userRepository.findById(product.getUserId()).orElse(null);
+            if (user != null) {
+                product.setUser(user);
+            }
+            
+            // 加载关联的分类信息
+            Category category = categoryRepository.findById(product.getCategoryId()).orElse(null);
+            if (category != null) {
+                product.setCategory(category);
+            }
+            
+            return new ProductResponse(product);
+        });
     }
 
     /**
@@ -332,8 +474,24 @@ public class ProductService {
         }
 
         List<Product> products = productRepository.findByUserIdAndStatusNot(userId, 0); // 排除已删除的商品
+        
+        // 为每个商品加载用户信息
         List<ProductResponse> result = products.stream()
-                .map(ProductResponse::new)
+                .map(product -> {
+                    // 加载关联的用户信息
+                    User user = userRepository.findById(product.getUserId()).orElse(null);
+                    if (user != null) {
+                        product.setUser(user);
+                    }
+                    
+                    // 加载关联的分类信息
+                    Category category = categoryRepository.findById(product.getCategoryId()).orElse(null);
+                    if (category != null) {
+                        product.setCategory(category);
+                    }
+                    
+                    return new ProductResponse(product);
+                })
                 .collect(Collectors.toList());
         
         // 缓存用户商品，缓存10分钟
@@ -382,7 +540,23 @@ public class ProductService {
 
         Pageable pageable = PageRequest.of(page, size);
         Page<Product> products = productRepository.findLatestProducts(1, pageable);
-        Page<ProductResponse> result = products.map(ProductResponse::new);
+        
+        // 为每个商品加载用户信息
+        Page<ProductResponse> result = products.map(product -> {
+            // 加载关联的用户信息
+            User user = userRepository.findById(product.getUserId()).orElse(null);
+            if (user != null) {
+                product.setUser(user);
+            }
+            
+            // 加载关联的分类信息
+            Category category = categoryRepository.findById(product.getCategoryId()).orElse(null);
+            if (category != null) {
+                product.setCategory(category);
+            }
+            
+            return new ProductResponse(product);
+        });
         
         // 缓存最新商品，缓存10分钟
         cacheService.set(cacheKey, result, 10, java.util.concurrent.TimeUnit.MINUTES);

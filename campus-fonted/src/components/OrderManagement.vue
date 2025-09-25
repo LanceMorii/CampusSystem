@@ -489,19 +489,137 @@ export default {
       return pages
     })
     
+    // 辅助函数
+    const getProductImage = (product) => {
+      if (!product) return '/placeholder.png'
+      
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+      
+      // 优先使用 image 字段
+      if (product.image) {
+        if (product.image.startsWith('http')) {
+          return product.image
+        } else if (product.image.startsWith('/uploads') || product.image.startsWith('uploads')) {
+          return `${baseUrl}/${product.image.replace(/^\//, '')}`
+        } else {
+          return `${baseUrl}/uploads/products/${product.image}`
+        }
+      }
+      
+      // 如果没有 image，尝试使用 images 数组
+      if (product.images) {
+        try {
+          const imageArray = typeof product.images === 'string' ? JSON.parse(product.images) : product.images
+          if (Array.isArray(imageArray) && imageArray.length > 0) {
+            const firstImage = imageArray[0]
+            if (firstImage.startsWith('http')) {
+              return firstImage
+            } else if (firstImage.startsWith('/uploads') || firstImage.startsWith('uploads')) {
+              return `${baseUrl}/${firstImage.replace(/^\//, '')}`
+            } else {
+              return `${baseUrl}/uploads/products/${firstImage}`
+            }
+          }
+        } catch (e) {
+          // 如果解析失败，尝试直接使用字符串作为图片路径
+          if (typeof product.images === 'string' && product.images.trim()) {
+            const imagePath = product.images.trim()
+            if (imagePath.startsWith('http')) {
+              return imagePath
+            } else if (imagePath.startsWith('/uploads') || imagePath.startsWith('uploads')) {
+              return `${baseUrl}/${imagePath.replace(/^\//, '')}`
+            } else {
+              return `${baseUrl}/uploads/products/${imagePath}`
+            }
+          }
+        }
+      }
+      
+      return '/placeholder.png'
+    }
+
+    const getOrderStatus = (status) => {
+      const statusMap = {
+        0: 'pending',      // 待确认
+        1: 'confirmed',    // 已确认
+        2: 'shipping',     // 配送中
+        3: 'completed',    // 已完成
+        4: 'cancelled'     // 已取消
+      }
+      return statusMap[status] || 'pending'
+    }
+
     // 方法
     const fetchOrders = async () => {
       try {
         loading.value = true
-        const response = await get('/orders')
         
-        if (response.success) {
-          orders.value = response.data || []
-        } else {
-          console.log('获取订单失败:', response.message)
+        // 并行获取买家和卖家订单
+        const [buyerResponse, sellerResponse] = await Promise.all([
+          get('/api/orders/buyer'),
+          get('/api/orders/seller')
+        ])
+        
+        const allOrders = []
+        
+        // 处理买家订单
+        if (buyerResponse.code === 200 && buyerResponse.data) {
+          const buyOrders = buyerResponse.data.map(order => ({
+            id: order.id,
+            orderNumber: order.orderNo,
+            type: 'buy',
+            status: getOrderStatus(order.status),
+            productId: order.product?.id,
+            productName: order.product?.name || '商品名称',
+            productDescription: order.product?.description || '',
+            productImage: getProductImage(order.product),
+            productCategory: order.product?.category?.name || '未分类',
+            quantity: order.quantity || 1,
+            unitPrice: order.product?.price || 0,
+            totalPrice: order.totalAmount || 0,
+            contactName: order.seller?.realName || order.seller?.username || '卖家',
+            contactPhone: order.seller?.phone || '未提供',
+            deliveryAddress: order.buyerMessage || '',
+            notes: order.buyerMessage || '',
+            createdAt: order.createdAt,
+            updatedAt: order.updatedAt,
+            statusHistory: []
+          }))
+          allOrders.push(...buyOrders)
         }
+        
+        // 处理卖家订单
+        if (sellerResponse.code === 200 && sellerResponse.data) {
+          const sellOrders = sellerResponse.data.map(order => ({
+            id: order.id,
+            orderNumber: order.orderNo,
+            type: 'sell',
+            status: getOrderStatus(order.status),
+            productId: order.product?.id,
+            productName: order.product?.name || '商品名称',
+            productDescription: order.product?.description || '',
+            productImage: getProductImage(order.product),
+            productCategory: order.product?.category?.name || '未分类',
+            quantity: order.quantity || 1,
+            unitPrice: order.product?.price || 0,
+            totalPrice: order.totalAmount || 0,
+            contactName: order.buyer?.realName || order.buyer?.username || '买家',
+            contactPhone: order.buyer?.phone || '未提供',
+            deliveryAddress: order.buyerMessage || '',
+            notes: order.buyerMessage || '',
+            createdAt: order.createdAt,
+            updatedAt: order.updatedAt,
+            statusHistory: []
+          }))
+          allOrders.push(...sellOrders)
+        }
+        
+        // 按创建时间排序
+        orders.value = allOrders.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+        
       } catch (error) {
-        console.log('获取订单失败:', error.message)
+        console.error('获取订单失败:', error)
+        orders.value = []
       } finally {
         loading.value = false
       }
@@ -566,9 +684,19 @@ export default {
     
     const confirmOrder = async (order) => {
       try {
-        const response = await put(`/orders/${order.id}/confirm`)
+        let response
         
-        if (response.success || true) { // 模拟成功
+        // 根据订单类型调用不同的确认接口
+        if (order.type === 'buy') {
+          // 买家确认订单
+          response = await put(`/api/orders/${order.id}/confirm-buyer`)
+        } else {
+          // 卖家确认订单
+          response = await put(`/api/orders/${order.id}/confirm-seller`)
+        }
+        
+        if (response.code === 200) {
+          // 更新本地订单状态
           order.status = 'confirmed'
           order.updatedAt = new Date().toISOString()
           
@@ -577,10 +705,12 @@ export default {
           order.statusHistory.push({
             status: 'confirmed',
             timestamp: new Date().toISOString(),
-            note: '卖家已确认订单'
+            note: order.type === 'buy' ? '买家已确认订单' : '卖家已确认订单'
           })
           
           alert('订单确认成功！')
+        } else {
+          alert(response.message || '确认订单失败')
         }
       } catch (error) {
         console.error('确认订单失败:', error)
@@ -592,9 +722,10 @@ export default {
       if (!confirm('确定要取消这个订单吗？')) return
       
       try {
-        const response = await put(`/orders/${order.id}/cancel`)
+        const response = await put(`/api/orders/${order.id}/cancel`)
         
-        if (response.success || true) { // 模拟成功
+        if (response.code === 200) {
+          // 更新本地订单状态
           order.status = 'cancelled'
           order.updatedAt = new Date().toISOString()
           
@@ -607,6 +738,8 @@ export default {
           })
           
           alert('订单取消成功！')
+        } else {
+          alert(response.message || '取消订单失败')
         }
       } catch (error) {
         console.error('取消订单失败:', error)
@@ -618,9 +751,10 @@ export default {
       if (!confirm('确认已收到商品吗？')) return
       
       try {
-        const response = await put(`/orders/${order.id}/complete`)
+        const response = await put(`/api/orders/${order.id}/complete`)
         
-        if (response.success || true) { // 模拟成功
+        if (response.code === 200) {
+          // 更新本地订单状态
           order.status = 'completed'
           order.updatedAt = new Date().toISOString()
           
@@ -633,6 +767,8 @@ export default {
           })
           
           alert('订单完成！')
+        } else {
+          alert(response.message || '完成订单失败')
         }
       } catch (error) {
         console.error('完成订单失败:', error)
@@ -706,25 +842,36 @@ export default {
 <style scoped>
 .order-management {
   min-height: 100vh;
-  background: #f5f5f5;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   padding: 20px;
 }
 
 .page-header {
   text-align: center;
   margin-bottom: 30px;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 30px;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
 }
 
 .page-header h1 {
-  color: #333;
+  color: #2c3e50;
   margin: 0 0 10px 0;
-  font-size: 28px;
+  font-size: 32px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .page-header p {
-  color: #666;
+  color: #7f8c8d;
   margin: 0;
   font-size: 16px;
+  font-weight: 400;
 }
 
 /* 标签页 */
@@ -732,131 +879,168 @@ export default {
   display: flex;
   justify-content: center;
   margin-bottom: 30px;
-  background: white;
-  border-radius: 8px;
-  padding: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 16px;
+  padding: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
 }
 
 .tab-btn {
-  padding: 12px 24px;
+  padding: 14px 28px;
   border: none;
   background: transparent;
-  border-radius: 6px;
+  border-radius: 12px;
   cursor: pointer;
-  font-size: 14px;
-  color: #666;
-  transition: all 0.3s ease;
-  margin: 0 4px;
+  font-size: 15px;
+  font-weight: 500;
+  color: #7f8c8d;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  margin: 0 6px;
+  position: relative;
+  overflow: hidden;
 }
 
 .tab-btn.active {
-  background: #2196f3;
+  background: linear-gradient(135deg, #667eea, #764ba2);
   color: white;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
 }
 
 .tab-btn:hover:not(.active) {
-  background: #f0f0f0;
+  background: rgba(102, 126, 234, 0.1);
+  transform: translateY(-1px);
+  color: #667eea;
 }
 
 /* 筛选器 */
 .order-filters {
   display: flex;
   align-items: center;
-  gap: 20px;
-  margin-bottom: 20px;
-  padding: 20px;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  gap: 24px;
+  margin-bottom: 24px;
+  padding: 24px;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
   flex-wrap: wrap;
 }
 
 .filter-group {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
 }
 
 .filter-group label {
   font-size: 14px;
-  color: #333;
+  font-weight: 500;
+  color: #2c3e50;
   white-space: nowrap;
 }
 
 .filter-group select,
 .filter-group input {
-  padding: 8px 12px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+  padding: 12px 16px;
+  border: 2px solid #e9ecef;
+  border-radius: 12px;
   font-size: 14px;
+  background: white;
+  transition: all 0.3s ease;
+  outline: none;
+}
+
+.filter-group select:focus,
+.filter-group input:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
 .filter-group input {
-  width: 200px;
+  width: 220px;
 }
 
 .reset-btn {
-  padding: 8px 16px;
-  background: #f5f5f5;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+  padding: 12px 20px;
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+  border: 2px solid #dee2e6;
+  border-radius: 12px;
   cursor: pointer;
   font-size: 14px;
-  color: #666;
+  font-weight: 500;
+  color: #6c757d;
+  transition: all 0.3s ease;
 }
 
 .reset-btn:hover {
-  background: #e0e0e0;
+  background: linear-gradient(135deg, #e9ecef, #dee2e6);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 /* 统计卡片 */
 .order-stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 24px;
   margin-bottom: 30px;
 }
 
 .stat-card {
-  background: white;
-  padding: 20px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.95);
+  padding: 24px;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 20px;
+  transition: all 0.3s ease;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
 }
 
 .stat-icon {
-  font-size: 32px;
-  width: 60px;
-  height: 60px;
+  font-size: 36px;
+  width: 70px;
+  height: 70px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f0f8ff;
-  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  border-radius: 16px;
+  color: white;
+  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.3);
 }
 
 .stat-info h3 {
   margin: 0;
-  font-size: 24px;
-  color: #333;
+  font-size: 28px;
+  font-weight: 700;
+  color: #2c3e50;
 }
 
 .stat-info p {
   margin: 4px 0 0 0;
   font-size: 14px;
-  color: #666;
+  font-weight: 500;
+  color: #7f8c8d;
 }
 
 /* 订单列表 */
 .order-list {
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
   overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .loading {
@@ -864,18 +1048,18 @@ export default {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 60px;
-  color: #666;
+  padding: 80px;
+  color: #7f8c8d;
 }
 
 .spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid #f3f3f3;
-  border-top: 3px solid #2196f3;
+  width: 40px;
+  height: 40px;
+  border: 4px solid rgba(102, 126, 234, 0.2);
+  border-top: 4px solid #667eea;
   border-radius: 50%;
   animation: spin 1s linear infinite;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 
 @keyframes spin {
@@ -888,33 +1072,56 @@ export default {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 60px;
-  color: #666;
+  padding: 80px;
+  color: #7f8c8d;
 }
 
 .empty-icon {
-  font-size: 64px;
-  margin-bottom: 20px;
+  font-size: 72px;
+  margin-bottom: 24px;
+  opacity: 0.6;
+}
+
+.empty-state h3 {
+  color: #2c3e50;
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.empty-state p {
+  color: #7f8c8d;
+  font-size: 16px;
+  margin-bottom: 24px;
 }
 
 .browse-btn {
   margin-top: 20px;
-  padding: 12px 24px;
-  background: #2196f3;
+  padding: 14px 28px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
   color: white;
   text-decoration: none;
-  border-radius: 6px;
-  transition: background-color 0.3s ease;
+  border-radius: 12px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.3);
 }
 
 .browse-btn:hover {
-  background: #1976d2;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
 }
 
 /* 订单卡片 */
 .order-card {
-  border-bottom: 1px solid #f0f0f0;
-  padding: 20px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  padding: 24px;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.order-card:hover {
+  background: rgba(102, 126, 234, 0.02);
 }
 
 .order-card:last-child {
@@ -925,95 +1132,119 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 
 .order-info {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
 }
 
 .order-number {
   margin: 0;
   font-size: 16px;
-  color: #333;
+  font-weight: 600;
+  color: #2c3e50;
 }
 
 .order-type {
-  padding: 4px 8px;
-  border-radius: 4px;
+  padding: 6px 12px;
+  border-radius: 8px;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .order-type.buy {
-  background: #e8f5e8;
+  background: linear-gradient(135deg, #e8f5e8, #c8e6c9);
   color: #2e7d32;
+  box-shadow: 0 2px 8px rgba(46, 125, 50, 0.2);
 }
 
 .order-type.sell {
-  background: #fff3e0;
+  background: linear-gradient(135deg, #fff3e0, #ffe0b2);
   color: #f57c00;
+  box-shadow: 0 2px 8px rgba(245, 124, 0, 0.2);
 }
 
 .order-status {
-  padding: 4px 8px;
-  border-radius: 4px;
+  padding: 6px 12px;
+  border-radius: 8px;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .order-status.pending {
-  background: #fff3e0;
+  background: linear-gradient(135deg, #fff3e0, #ffe0b2);
   color: #f57c00;
+  box-shadow: 0 2px 8px rgba(245, 124, 0, 0.2);
 }
 
 .order-status.confirmed {
-  background: #e3f2fd;
+  background: linear-gradient(135deg, #e3f2fd, #bbdefb);
   color: #1976d2;
+  box-shadow: 0 2px 8px rgba(25, 118, 210, 0.2);
 }
 
 .order-status.shipping {
-  background: #f3e5f5;
+  background: linear-gradient(135deg, #f3e5f5, #e1bee7);
   color: #7b1fa2;
+  box-shadow: 0 2px 8px rgba(123, 31, 162, 0.2);
 }
 
 .order-status.completed {
-  background: #e8f5e8;
+  background: linear-gradient(135deg, #e8f5e8, #c8e6c9);
   color: #2e7d32;
+  box-shadow: 0 2px 8px rgba(46, 125, 50, 0.2);
 }
 
 .order-status.cancelled {
-  background: #ffebee;
+  background: linear-gradient(135deg, #ffebee, #ffcdd2);
   color: #d32f2f;
+  box-shadow: 0 2px 8px rgba(211, 47, 47, 0.2);
 }
 
 .order-actions {
   display: flex;
-  gap: 8px;
+  gap: 12px;
 }
 
 .action-btn {
-  padding: 6px 12px;
-  border: 1px solid #ddd;
+  padding: 8px 16px;
+  border: 2px solid transparent;
   background: white;
-  border-radius: 4px;
+  border-radius: 8px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 500;
   transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .action-btn.confirm {
-  background: #4caf50;
+  background: linear-gradient(135deg, #4caf50, #66bb6a);
   color: white;
   border-color: #4caf50;
 }
 
+.action-btn.confirm:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(76, 175, 80, 0.3);
+}
+
 .action-btn.cancel {
-  background: #f44336;
+  background: linear-gradient(135deg, #f44336, #ef5350);
   color: white;
   border-color: #f44336;
+}
+
+.action-btn.cancel:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(244, 67, 54, 0.3);
 }
 
 .action-btn.complete {

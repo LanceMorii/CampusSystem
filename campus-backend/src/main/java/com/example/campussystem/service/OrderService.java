@@ -20,7 +20,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -315,6 +317,49 @@ public class OrderService {
                 BigDecimal buyerAmount = orderRepository.calculateBuyerTotalAmount(userId);
                 BigDecimal sellerAmount = orderRepository.calculateSellerTotalAmount(userId);
                 return buyerAmount.add(sellerAmount);
+        }
+    }
+
+    /**
+     * 获取用户订单统计
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Long> getUserOrderStats(Long userId) {
+        Map<String, Long> stats = new HashMap<>();
+        
+        // 统计各种状态的订单数量
+        stats.put("pending", orderRepository.countUserOrdersByStatus(userId, 1)); // 待确认
+        stats.put("processing", orderRepository.countUserOrdersByStatus(userId, 2)); // 进行中
+        stats.put("completed", orderRepository.countUserOrdersByStatus(userId, 3)); // 已完成
+        stats.put("cancelled", orderRepository.countUserOrdersByStatus(userId, 4)); // 已取消
+        
+        // 统计买家和卖家订单数量
+        stats.put("asBuyer", orderRepository.countByBuyerId(userId));
+        stats.put("asSeller", orderRepository.countBySellerId(userId));
+        
+        // 总订单数
+        stats.put("total", stats.get("asBuyer") + stats.get("asSeller"));
+        
+        return stats;
+    }
+
+    /**
+     * 获取用户总交易金额
+     */
+    @Transactional(readOnly = true)
+    public Double getUserTotalTradeAmount(Long userId) {
+        try {
+            // 只计算已完成订单的金额
+            BigDecimal buyerAmount = orderRepository.calculateCompletedBuyerAmount(userId);
+            BigDecimal sellerAmount = orderRepository.calculateCompletedSellerAmount(userId);
+            
+            if (buyerAmount == null) buyerAmount = BigDecimal.ZERO;
+            if (sellerAmount == null) sellerAmount = BigDecimal.ZERO;
+            
+            return buyerAmount.add(sellerAmount).doubleValue();
+        } catch (Exception e) {
+            System.err.println("计算用户交易金额失败: " + e.getMessage());
+            return 0.0;
         }
     }
 

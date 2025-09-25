@@ -25,6 +25,26 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     List<Product> findByUserIdAndStatusNot(Long userId, Integer status);
 
     /**
+     * 根据用户ID和状态查询商品列表（分页）
+     */
+    Page<Product> findByUserIdAndStatusNot(Long userId, Integer status, Pageable pageable);
+
+    /**
+     * 根据用户ID和状态查询商品列表（分页）
+     */
+    Page<Product> findByUserIdAndStatus(Long userId, Integer status, Pageable pageable);
+
+    /**
+     * 根据用户ID、状态和标题查询商品列表（分页）
+     */
+    Page<Product> findByUserIdAndStatusAndTitleContainingIgnoreCase(Long userId, Integer status, String title, Pageable pageable);
+
+    /**
+     * 根据用户ID、标题查询商品列表，排除指定状态（分页）
+     */
+    Page<Product> findByUserIdAndTitleContainingIgnoreCaseAndStatusNot(Long userId, String title, Integer status, Pageable pageable);
+
+    /**
      * 根据分类ID查询商品列表（分页）
      */
     Page<Product> findByCategoryIdAndStatus(Long categoryId, Integer status, Pageable pageable);

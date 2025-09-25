@@ -38,6 +38,18 @@ public class ProductController {
     }
 
     /**
+     * 保存商品草稿
+     */
+    @PostMapping("/draft")
+    public ResponseEntity<ApiResponse<ProductResponse>> saveDraft(
+            @Valid @RequestBody ProductRequest request,
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
+        
+        ProductResponse response = productService.saveDraft(request, userPrincipal.getUserId());
+        return ResponseEntity.ok(ApiResponse.success("草稿保存成功", response));
+    }
+
+    /**
      * 更新商品信息
      */
     @PutMapping("/{id}")
@@ -57,6 +69,15 @@ public class ProductController {
     public ResponseEntity<ApiResponse<ProductResponse>> getProductDetail(@PathVariable Long id) {
         ProductResponse response = productService.getProductDetail(id);
         return ResponseEntity.ok(ApiResponse.success("获取商品详情成功", response));
+    }
+
+    /**
+     * 增加商品浏览次数
+     */
+    @PostMapping("/{id}/view")
+    public ResponseEntity<ApiResponse<String>> incrementViewCount(@PathVariable Long id) {
+        productService.incrementViewCount(id);
+        return ResponseEntity.ok(ApiResponse.success("浏览次数更新成功"));
     }
 
     /**
@@ -133,13 +154,18 @@ public class ProductController {
     }
 
     /**
-     * 获取用户发布的商品列表
+     * 获取用户发布的商品列表（支持分页和筛选）
      */
     @GetMapping("/my")
-    public ResponseEntity<ApiResponse<List<ProductResponse>>> getUserProducts(
+    public ResponseEntity<ApiResponse<Page<ProductResponse>>> getUserProducts(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) Integer status,
+            @RequestParam(required = false) String title,
             @AuthenticationPrincipal UserPrincipal userPrincipal) {
         
-        List<ProductResponse> response = productService.getUserProducts(userPrincipal.getUserId());
+        Page<ProductResponse> response = productService.getUserProductsWithPagination(
+                userPrincipal.getUserId(), page, size, status, title);
         return ResponseEntity.ok(ApiResponse.success("获取我的商品成功", response));
     }
 

@@ -1,381 +1,343 @@
-import { get, post } from '../api/request'
+// import SockJS from 'sockjs-client' // 已切换为原生 WebSocket
+import { Client } from '@stomp/stompjs'
 
 class MessageService {
   constructor() {
-    this.ws = null
-    this.pollingInterval = null
+    this.client = null
     this.isConnected = false
-    this.reconnectAttempts = 0
-    this.maxReconnectAttempts = 5
-    this.reconnectDelay = 3000
-    this.messageHandlers = new Set()
-    this.conversationHandlers = new Set()
-    this.connectionHandlers = new Set()
-    this.useWebSocket = true // 优先使用WebSocket，失败时降级到轮询
-    this.pollingIntervalTime = 3000 // 轮询间隔3秒
-    this.lastMessageTime = null
+    this.messageHandlers = []
+    this.connectionHandlers = []
+    this.conversationHandlers = []
   }
 
-  // 初始化连接
+  // 初始化WebSocket连接（使用原生 WebSocket，避免 SockJS 的 /info 404）
   async initialize() {
     try {
-      if (this.useWebSocket) {
-        await this.connectWebSocket()
-      } else {
-        this.startPolling()
+      console.log('初始化WebSocket连接...')
+      
+      // 获取token
+      const token = localStorage.getItem('token')
+      if (!token) {
+        console.error('未找到认证token，无法建立WebSocket连接')
+        return false
       }
-    } catch (error) {
-      console.warn('WebSocket连接失败，降级到轮询模式:', error)
-      this.useWebSocket = false
-      this.startPolling()
-    }
-  }
-
-  // WebSocket连接
-  async connectWebSocket() {
-    return new Promise((resolve, reject) => {
+      
+      // 计算后端 WS 地址：考虑到后端设置了 context-path /api/v1，实际端点为 /api/v1/ws
+      const apiBaseEnv = (import.meta && import.meta.env && import.meta.env.VITE_API_BASE_URL) ? import.meta.env.VITE_API_BASE_URL : 'http://localhost:8080'
+      let wsUrl
       try {
-        // 在实际项目中，这里应该是真实的WebSocket服务器地址
-        const wsUrl = `ws://localhost:8080/ws?userId=${localStorage.getItem('userId') || '1'}`
-        this.ws = new WebSocket(wsUrl)
-
-        this.ws.onopen = () => {
-          console.log('WebSocket连接已建立')
+        const api = new URL(apiBaseEnv)
+        const wsProtocol = api.protocol === 'https:' ? 'wss:' : 'ws:'
+        const basePath = api.pathname && api.pathname !== '/' ? api.pathname.replace(/\/+$/, '') : ''
+        const ctxPath = basePath.endsWith('/api/v1') ? basePath : `${basePath}/api/v1`
+        wsUrl = `${wsProtocol}//${api.host}${ctxPath}/ws?token=${encodeURIComponent(token)}`
+      } catch (e) {
+        // 兜底处理：若 env 值不是合法 URL，则直接替换前缀并拼接 context-path
+        const base = apiBaseEnv.startsWith('https') ? apiBaseEnv.replace(/^https/, 'wss') : apiBaseEnv.replace(/^http/, 'ws')
+        const trimmed = base.replace(/\/+$/, '')
+        const withCtx = trimmed.endsWith('/api/v1') ? trimmed : `${trimmed}/api/v1`
+        wsUrl = `${withCtx}/ws?token=${encodeURIComponent(token)}`
+      }
+      console.log('连接原生WebSocket地址:', wsUrl)
+      
+      // 创建STOMP客户端（使用原生 WebSocket）
+      this.client = new Client({
+        brokerURL: wsUrl,
+        connectHeaders: {
+          'Authorization': `Bearer ${token}`
+        },
+        // 禁用自动重连，手动控制
+        reconnectDelay: 0,
+        // 启用心跳
+        heartbeatIncoming: 4000,
+        heartbeatOutgoing: 4000,
+        debug: (str) => {
+          console.log('STOMP Debug:', str)
+        },
+        onConnect: (frame) => {
+          console.log('WebSocket连接成功:', frame)
           this.isConnected = true
-          this.reconnectAttempts = 0
-          this.notifyConnectionHandlers('connected')
-          resolve()
-        }
-
-        this.ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data)
-            this.handleMessage(data)
-          } catch (error) {
-            console.error('解析WebSocket消息失败:', error)
-          }
-        }
-
-        this.ws.onclose = (event) => {
-          console.log('WebSocket连接已关闭:', event.code, event.reason)
-          this.isConnected = false
-          this.notifyConnectionHandlers('disconnected')
-          
-          // 如果不是主动关闭，尝试重连
-          if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
-            this.scheduleReconnect()
-          } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-            console.warn('WebSocket重连次数超限，切换到轮询模式')
-            this.useWebSocket = false
-            this.startPolling()
-          }
-        }
-
-        this.ws.onerror = (error) => {
-          console.error('WebSocket错误:', error)
-          reject(error)
-        }
-
-        // 设置连接超时
-        setTimeout(() => {
-          if (this.ws.readyState !== WebSocket.OPEN) {
-            this.ws.close()
-            reject(new Error('WebSocket连接超时'))
-          }
-        }, 5000)
-
-      } catch (error) {
-        reject(error)
-      }
-    })
-  }
-
-  // 重连WebSocket
-  scheduleReconnect() {
-    this.reconnectAttempts++
-    const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1) // 指数退避
-    
-    console.log(`${delay}ms后尝试第${this.reconnectAttempts}次重连...`)
-    
-    setTimeout(() => {
-      if (!this.isConnected && this.useWebSocket) {
-        this.connectWebSocket().catch(() => {
-          // 重连失败，继续尝试或切换到轮询
-        })
-      }
-    }, delay)
-  }
-
-  // 开始轮询
-  startPolling() {
-    if (this.pollingInterval) {
-      clearInterval(this.pollingInterval)
-    }
-
-    console.log('开始轮询模式，间隔:', this.pollingIntervalTime + 'ms')
-    this.notifyConnectionHandlers('polling')
-
-    this.pollingInterval = setInterval(async () => {
-      try {
-        await this.pollMessages()
-        await this.pollConversations()
-      } catch (error) {
-        console.error('轮询消息失败:', error)
-      }
-    }, this.pollingIntervalTime)
-
-    // 立即执行一次
-    this.pollMessages()
-    this.pollConversations()
-  }
-
-  // 轮询消息
-  async pollMessages() {
-    try {
-      const params = {}
-      if (this.lastMessageTime) {
-        params.since = this.lastMessageTime
-      }
-
-      const response = await get('/messages/poll', { params })
-      
-      if (response.success && response.data && response.data.length > 0) {
-        response.data.forEach(message => {
-          this.handleMessage({
-            type: 'new_message',
-            data: message
+          this.onConnected()
+          // 通知连接状态变更
+          this.connectionHandlers.forEach(handler => {
+            try { handler(true) } catch (e) { console.error('连接回调错误:', e) }
           })
-        })
-        
-        // 更新最后消息时间
-        const latestMessage = response.data[response.data.length - 1]
-        this.lastMessageTime = latestMessage.createdAt
-      }
-    } catch (error) {
-      // 轮询失败时使用模拟数据
-      if (Math.random() < 0.1) { // 10%概率模拟新消息
-        this.simulateNewMessage()
-      }
-    }
-  }
+        },
+        onDisconnect: () => {
+          console.log('WebSocket连接断开')
+          this.isConnected = false
+          // 通知连接状态变更
+          this.connectionHandlers.forEach(handler => {
+            try { handler(false) } catch (e) { console.error('连接回调错误:', e) }
+          })
+        },
+        onStompError: (frame) => {
+          console.error('STOMP错误:', frame)
+        }
+      })
 
-  // 轮询对话列表更新
-  async pollConversations() {
-    try {
-      const response = await get('/conversations/updates')
+      // 激活连接
+      this.client.activate()
       
-      if (response.success && response.data) {
-        this.notifyConversationHandlers({
-          type: 'conversations_updated',
-          data: response.data
-        })
-      }
+      return true
     } catch (error) {
-      // 静默处理轮询错误
+      console.error('WebSocket初始化失败:', error)
+      return false
     }
   }
 
-  // 处理接收到的消息
+  // 连接成功后的处理
+  onConnected() {
+    try {
+      // 从localStorage获取userId，如果没有则从userInfo中提取
+      let userId = localStorage.getItem('userId')
+      if (!userId) {
+        const userInfo = localStorage.getItem('userInfo')
+        if (userInfo && userInfo !== 'undefined') {
+          try {
+            const parsedUserInfo = JSON.parse(userInfo)
+            userId = parsedUserInfo.id || parsedUserInfo.userId
+            if (userId) {
+              localStorage.setItem('userId', userId.toString())
+            }
+          } catch (error) {
+            console.error('解析用户信息失败:', error)
+          }
+        }
+      }
+      
+      if (!userId) {
+        console.error('无法获取用户ID，无法订阅消息')
+        return
+      }
+      
+      console.log('使用用户ID订阅消息:', userId)
+      
+      // 订阅用户专属消息目的地（后端推送到 /user/queue/new-message）
+      this.client.subscribe(`/user/queue/new-message`, (message) => {
+        console.log('收到新消息通知:', message.body)
+        try {
+          const payload = JSON.parse(message.body)
+          this.handleMessage(payload)
+        } catch (e) {
+          console.error('解析新消息失败:', e, message.body)
+        }
+      })
+      
+      // 订阅系统通知
+      this.client.subscribe('/topic/notifications', (message) => {
+        console.log('收到系统通知:', message.body)
+        try {
+          const payload = JSON.parse(message.body)
+          this.handleMessage(payload)
+        } catch (e) {
+          console.error('解析系统通知失败:', e, message.body)
+        }
+      })
+      
+      console.log('消息订阅完成')
+    } catch (error) {
+      console.error('订阅消息失败:', error)
+    }
+  }
+
+  // 处理收到的消息（后端直接推送 MessageResponse）
   handleMessage(data) {
-    switch (data.type) {
-      case 'new_message':
-        this.notifyMessageHandlers(data.data)
-        break
-      case 'message_read':
-        this.notifyMessageHandlers({
-          type: 'read_receipt',
-          conversationId: data.conversationId,
-          messageId: data.messageId
-        })
-        break
-      case 'user_typing':
-        this.notifyMessageHandlers({
-          type: 'typing',
-          conversationId: data.conversationId,
-          userId: data.userId,
-          isTyping: data.isTyping
-        })
-        break
-      case 'conversation_updated':
-        this.notifyConversationHandlers(data)
-        break
-      default:
-        console.log('未知消息类型:', data.type)
+    console.log('处理消息:', data)
+    try {
+      const mapped = this.mapMessage(data)
+      this.messageHandlers.forEach(handler => {
+        try { handler(mapped) } catch (error) { console.error('消息处理器错误:', error) }
+      })
+    } catch (err) {
+      console.error('处理消息失败:', err, data)
     }
   }
 
   // 发送消息
-  async sendMessage(messageData) {
+  sendMessage(message) {
+    if (!this.isConnected || !this.client) {
+      console.error('WebSocket未连接，无法发送消息')
+      return false
+    }
+
     try {
-      // 通过HTTP API发送消息
-      const response = await post('/messages', messageData)
-      
-      if (response.success) {
-        // 如果使用WebSocket，也通过WebSocket发送
-        if (this.isConnected && this.ws) {
-          this.ws.send(JSON.stringify({
-            type: 'send_message',
-            data: messageData
-          }))
-        }
-        return response
-      } else {
-        throw new Error(response.message || '发送消息失败')
-      }
+      this.client.publish({
+        destination: '/app/chat.sendMessage',
+        body: JSON.stringify(message)
+      })
+      console.log('消息发送成功:', message)
+      return true
     } catch (error) {
       console.error('发送消息失败:', error)
-      // 模拟发送成功
-      return {
-        success: true,
-        data: {
-          id: Date.now(),
-          ...messageData,
-          createdAt: new Date().toISOString()
-        }
-      }
+      return false
     }
   }
 
-  // 标记消息为已读
-  async markAsRead(conversationId, messageId) {
-    try {
-      const response = await post(`/conversations/${conversationId}/read`, { messageId })
-      
-      if (this.isConnected && this.ws) {
-        this.ws.send(JSON.stringify({
-          type: 'mark_read',
-          conversationId,
-          messageId
-        }))
-      }
-      
-      return response
-    } catch (error) {
-      console.error('标记已读失败:', error)
-      return { success: false, message: error.message }
-    }
-  }
-
-  // 发送正在输入状态
-  sendTypingStatus(conversationId, isTyping) {
-    if (this.isConnected && this.ws) {
-      this.ws.send(JSON.stringify({
-        type: 'typing',
-        conversationId,
-        isTyping
-      }))
-    }
-  }
-
-  // 模拟新消息（用于演示）
-  simulateNewMessage() {
-    const mockMessage = {
-      id: Date.now(),
-      conversationId: Math.floor(Math.random() * 3) + 1,
-      senderId: '2',
-      senderName: '模拟用户',
-      content: '这是一条模拟的新消息',
-      type: 'text',
-      createdAt: new Date().toISOString()
-    }
-    
-    this.notifyMessageHandlers(mockMessage)
-  }
-
-  // 注册消息处理器
+  // 订阅消息（返回取消订阅函数）
   onMessage(handler) {
-    this.messageHandlers.add(handler)
-    return () => this.messageHandlers.delete(handler)
+    this.messageHandlers.push(handler)
+    return () => {
+      const index = this.messageHandlers.indexOf(handler)
+      if (index > -1) this.messageHandlers.splice(index, 1)
+    }
   }
 
-  // 注册对话更新处理器
+  // 会话更新订阅（返回取消订阅函数）
   onConversationUpdate(handler) {
-    this.conversationHandlers.add(handler)
-    return () => this.conversationHandlers.delete(handler)
+    this.conversationHandlers.push(handler)
+    return () => {
+      const index = this.conversationHandlers.indexOf(handler)
+      if (index > -1) this.conversationHandlers.splice(index, 1)
+    }
   }
 
-  // 注册连接状态处理器
+  // 连接状态订阅（立即回调一次当前状态；返回取消订阅函数）
   onConnectionChange(handler) {
-    this.connectionHandlers.add(handler)
-    return () => this.connectionHandlers.delete(handler)
+    this.connectionHandlers.push(handler)
+    try { handler(this.isConnected) } catch (e) { console.error('连接回调错误:', e) }
+    return () => {
+      const index = this.connectionHandlers.indexOf(handler)
+      if (index > -1) this.connectionHandlers.splice(index, 1)
+    }
   }
 
-  // 通知消息处理器
-  notifyMessageHandlers(message) {
-    this.messageHandlers.forEach(handler => {
-      try {
-        handler(message)
-      } catch (error) {
-        console.error('消息处理器执行失败:', error)
+  // 标记消息/会话为已读
+  markAsRead(conversationId, messageId) {
+    if (!this.isConnected || !this.client) {
+      console.error('WebSocket未连接，无法标记已读')
+      return false
+    }
+    try {
+      if (!messageId) {
+        console.error('markAsRead 需要提供 messageId')
+        return false
       }
-    })
+      const body = { conversationId, messageId }
+      this.client.publish({
+        destination: '/app/chat.markRead',
+        body: JSON.stringify(body)
+      })
+      console.log('已发送已读标记:', body)
+      return true
+    } catch (error) {
+      console.error('发送已读标记失败:', error)
+      return false
+    }
   }
 
-  // 通知对话更新处理器
-  notifyConversationHandlers(data) {
-    this.conversationHandlers.forEach(handler => {
-      try {
-        handler(data)
-      } catch (error) {
-        console.error('对话更新处理器执行失败:', error)
-      }
-    })
+  // 输入中状态通知
+  typing(toUserId, conversationId, isTyping = true) {
+    if (!this.isConnected || !this.client) {
+      console.error('WebSocket未连接，无法发送输入状态')
+      return false
+    }
+    try {
+      const body = { toUserId, conversationId, isTyping: !!isTyping }
+      this.client.publish({
+        destination: '/app/chat.typing',
+        body: JSON.stringify(body)
+      })
+      console.log('已发送输入状态:', body)
+      return true
+    } catch (error) {
+      console.error('发送输入状态失败:', error)
+      return false
+    }
   }
 
-  // 通知连接状态处理器
-  notifyConnectionHandlers(status) {
-    this.connectionHandlers.forEach(handler => {
-      try {
-        handler(status)
-      } catch (error) {
-        console.error('连接状态处理器执行失败:', error)
-      }
-    })
+  // 将后端MessageResponse映射为前端使用的消息模型
+  mapMessage(msg) {
+    if (!msg || typeof msg !== 'object') return msg
+    const currentId = parseInt(localStorage.getItem('userId') || '0', 10)
+    const convId = msg.conversationId != null ? msg.conversationId : (msg.fromUserId === currentId ? msg.toUserId : msg.fromUserId)
+    return {
+      id: msg.id,
+      conversationId: convId,
+      fromUserId: msg.fromUserId,
+      toUserId: msg.toUserId,
+      productId: msg.productId,
+      content: msg.content,
+      type: msg.type,
+      isRead: msg.isRead,
+      isUnread: msg.isUnread !== undefined ? msg.isUnread : (msg.isRead === 0),
+      readStatus: msg.readStatus,
+      readTime: msg.readTime,
+      createdAt: msg.createTime,
+      // 顶层常用字段，便于MessageCenter直接使用
+      senderId: msg.fromUserId,
+      senderName: msg.fromNickname || msg.fromUsername,
+      senderAvatar: msg.fromAvatar,
+      receiverId: msg.toUserId,
+      receiverName: msg.toNickname || msg.toUsername,
+      receiverAvatar: msg.toAvatar,
+      // 保留嵌套对象以兼容其他组件
+      sender: {
+        id: msg.fromUserId,
+        username: msg.fromUsername,
+        nickname: msg.fromNickname,
+        avatar: msg.fromAvatar
+      },
+      receiver: {
+        id: msg.toUserId,
+        username: msg.toUsername,
+        nickname: msg.toNickname,
+        avatar: msg.toAvatar
+      },
+      product: msg.productId ? {
+        id: msg.productId,
+        title: msg.productTitle,
+        image: msg.productImage
+      } : null
+    }
   }
 
-  // 获取连接状态
-  getConnectionStatus() {
-    if (this.isConnected) {
-      return 'connected'
-    } else if (this.pollingInterval) {
-      return 'polling'
-    } else {
-      return 'disconnected'
+  // 添加消息处理器
+  addMessageHandler(handler) {
+    this.messageHandlers.push(handler)
+  }
+
+  // 移除消息处理器
+  removeMessageHandler(handler) {
+    const index = this.messageHandlers.indexOf(handler)
+    if (index > -1) {
+      this.messageHandlers.splice(index, 1)
     }
   }
 
   // 断开连接
   disconnect() {
-    if (this.ws) {
-      this.ws.close(1000, '主动断开连接')
-      this.ws = null
+    if (this.client) {
+      this.client.deactivate()
+      this.isConnected = false
+      console.log('WebSocket连接已断开')
     }
-    
-    if (this.pollingInterval) {
-      clearInterval(this.pollingInterval)
-      this.pollingInterval = null
-    }
-    
-    this.isConnected = false
-    this.notifyConnectionHandlers('disconnected')
   }
 
-  // 重新连接
+  // 新增：重连方法，供登录后刷新token使用
   async reconnect() {
-    this.disconnect()
-    this.reconnectAttempts = 0
-    await this.initialize()
+    try {
+      console.log('准备重连WebSocket...')
+      if (this.client) {
+        this.client.deactivate()
+        this.client = null
+        this.isConnected = false
+      }
+      // 重新初始化（会读取最新的token）
+      return await this.initialize()
+    } catch (e) {
+      console.error('重连失败:', e)
+      return false
+    }
   }
 
-  // 切换连接模式
-  async switchMode(useWebSocket = true) {
-    this.disconnect()
-    this.useWebSocket = useWebSocket
-    await this.initialize()
+  // 获取连接状态
+  getConnectionStatus() {
+    return this.isConnected
   }
 }
 
-// 创建单例实例
+// 创建单例
 const messageService = new MessageService()
 
 export default messageService

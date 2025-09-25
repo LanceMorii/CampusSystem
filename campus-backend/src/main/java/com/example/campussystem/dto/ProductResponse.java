@@ -16,6 +16,8 @@ public class ProductResponse {
     private Long userId;
     private String username;
     private String userAvatar;
+    private String phone;
+    private String email;
     private Long categoryId;
     private String categoryName;
     private String title;
@@ -102,6 +104,8 @@ public class ProductResponse {
         if (product.getUser() != null) {
             this.username = product.getUser().getUsername();
             this.userAvatar = product.getUser().getAvatar();
+            this.phone = product.getUser().getPhone();
+            this.email = product.getUser().getEmail();
         }
         
         if (product.getCategory() != null) {
@@ -151,6 +155,22 @@ public class ProductResponse {
 
     public void setUserAvatar(String userAvatar) {
         this.userAvatar = userAvatar;
+    }
+
+    public String getPhone() {
+        return phone;
+    }
+
+    public void setPhone(String phone) {
+        this.phone = phone;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
     }
 
     public Long getCategoryId() {

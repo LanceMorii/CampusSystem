@@ -8,6 +8,7 @@ import MessageCenter from '../components/MessageCenter.vue'
 import ProductPublish from '../components/ProductPublish.vue'
 import MyProducts from '../components/MyProducts.vue'
 import OrderManagement from '../components/OrderManagement.vue'
+import Favorites from '../components/Favorites.vue'
 
 const routes = [
   {
@@ -58,6 +59,11 @@ const routes = [
     path: '/orders',
     name: 'OrderManagement',
     component: OrderManagement
+  },
+  {
+    path: '/favorites',
+    name: 'Favorites',
+    component: Favorites
   }
 ]
 

@@ -4,38 +4,44 @@
     <div class="page-header">
       <h1>我的商品</h1>
       <router-link to="/publish" class="publish-btn">
-        <i class="icon-plus"></i>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
         发布新商品
       </router-link>
     </div>
 
-    <!-- 筛选和搜索 -->
-    <div class="filter-section">
-      <div class="filter-tabs">
-        <button 
-          v-for="status in statusOptions" 
-          :key="status.value"
-          :class="['tab-btn', { active: currentStatus === status.value }]"
-          @click="currentStatus = status.value"
-        >
-          {{ status.label }}
-          <span class="count" v-if="status.count > 0">({{ status.count }})</span>
-        </button>
-      </div>
-      
+    <!-- 状态筛选 -->
+    <div class="status-tabs">
+      <button 
+        v-for="option in statusOptions" 
+        :key="option.value"
+        :class="['status-tab', { active: currentStatus === option.value }]"
+        @click="currentStatus = option.value"
+      >
+        {{ option.label }} ({{ option.count }})
+      </button>
+    </div>
+
+    <!-- 搜索框 -->
+    <div class="search-section">
       <div class="search-box">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"></circle>
+          <path d="m21 21-4.35-4.35"></path>
+        </svg>
         <input 
           v-model="searchKeyword" 
           type="text" 
-          placeholder="搜索我的商品..."
+          placeholder="搜索商品名称..."
           @input="handleSearch"
         >
-        <i class="icon-search"></i>
       </div>
     </div>
 
     <!-- 商品列表 -->
-    <div class="products-container">
+    <div class="products-section">
       <div v-if="loading" class="loading">
         <div class="spinner"></div>
         <p>加载中...</p>
@@ -44,21 +50,21 @@
       <div v-else-if="products.length === 0" class="empty-state">
         <div class="empty-icon">📦</div>
         <h3>暂无商品</h3>
-        <p>{{ currentStatus === 'all' ? '您还没有发布任何商品' : '该状态下暂无商品' }}</p>
-        <router-link to="/publish" class="publish-btn-empty">发布第一个商品</router-link>
+        <p>你还没有发布任何商品</p>
+        <router-link to="/publish" class="publish-btn">发布第一个商品</router-link>
       </div>
 
       <div v-else class="products-grid">
         <div v-for="product in products" :key="product.id" class="product-card">
           <div class="product-image">
-            <img :src="product.image || '/placeholder.jpg'" :alt="product.title">
-            <div class="status-badge" :class="product.status">
-              {{ getStatusText(product.status) }}
+            <img :src="getProductImage(product)" :alt="product.name" />
+            <div class="product-status" :class="getProductStatus(product.status)">
+              {{ getStatusText(getProductStatus(product.status)) }}
             </div>
           </div>
           
           <div class="product-info">
-            <h3 class="product-title">{{ product.title }}</h3>
+            <h3 class="product-title">{{ product.name }}</h3>
             <p class="product-price">¥{{ product.price }}</p>
             <div class="product-meta">
               <span class="views">浏览 {{ product.views || 0 }}</span>
@@ -67,66 +73,56 @@
           </div>
           
           <div class="product-actions">
-            <button @click="viewProduct(product.id)" class="action-btn view">
-              <i class="icon-eye"></i>
-              查看
-            </button>
-            <button @click="editProduct(product.id)" class="action-btn edit">
-              <i class="icon-edit"></i>
-              编辑
-            </button>
+            <button @click="viewProduct(product.id)" class="action-btn view">查看</button>
+            <button @click="editProduct(product.id)" class="action-btn edit">编辑</button>
             <button 
               @click="toggleStatus(product)" 
               class="action-btn toggle"
-              :class="product.status"
+              :class="{ active: getProductStatus(product.status) === 'active' }"
             >
-              <i :class="product.status === 'active' ? 'icon-pause' : 'icon-play'"></i>
-              {{ product.status === 'active' ? '下架' : '上架' }}
+              {{ getProductStatus(product.status) === 'active' ? '下架' : '上架' }}
             </button>
-            <button @click="deleteProduct(product.id)" class="action-btn delete">
-              <i class="icon-trash"></i>
-              删除
-            </button>
+            <button @click="deleteProduct(product.id)" class="action-btn delete">删除</button>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- 分页 -->
-    <div v-if="totalPages > 1" class="pagination">
-      <button 
-        @click="currentPage = currentPage - 1" 
-        :disabled="currentPage === 1"
-        class="page-btn"
-      >
-        上一页
-      </button>
-      
-      <div class="page-numbers">
+      <!-- 分页 -->
+      <div v-if="totalPages > 1" class="pagination">
         <button 
-          v-for="page in visiblePages" 
-          :key="page"
-          :class="['page-btn', { active: page === currentPage }]"
-          @click="currentPage = page"
+          @click="currentPage = currentPage - 1" 
+          :disabled="currentPage <= 1"
+          class="page-btn"
         >
-          {{ page }}
+          上一页
+        </button>
+        
+        <div class="page-numbers">
+          <button 
+            v-for="page in visiblePages" 
+            :key="page"
+            @click="currentPage = page"
+            :class="['page-btn', { active: currentPage === page }]"
+          >
+            {{ page }}
+          </button>
+        </div>
+        
+        <button 
+          @click="currentPage = currentPage + 1" 
+          :disabled="currentPage >= totalPages"
+          class="page-btn"
+        >
+          下一页
         </button>
       </div>
-      
-      <button 
-        @click="currentPage = currentPage + 1" 
-        :disabled="currentPage === totalPages"
-        class="page-btn"
-      >
-        下一页
-      </button>
     </div>
 
     <!-- 删除确认弹窗 -->
     <div v-if="showDeleteModal" class="modal-overlay" @click="showDeleteModal = false">
-      <div class="modal" @click.stop>
+      <div class="modal-content" @click.stop>
         <h3>确认删除</h3>
-        <p>确定要删除这个商品吗？此操作不可恢复。</p>
+        <p>确定要删除这个商品吗？删除后无法恢复。</p>
         <div class="modal-actions">
           <button @click="showDeleteModal = false" class="btn-cancel">取消</button>
           <button @click="confirmDelete" class="btn-confirm">确认删除</button>
@@ -137,7 +133,7 @@
 </template>
 
 <script>
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { get, put, del } from '../api/request'
 
@@ -178,90 +174,184 @@ export default {
       for (let i = start; i <= end; i++) {
         pages.push(i)
       }
+      
       return pages
     })
     
-    // 方法
+    // 获取商品数据
     const fetchProducts = async () => {
       try {
         loading.value = true
+        
         const params = {
-          page: currentPage.value,
-          pageSize: pageSize.value,
-          status: currentStatus.value === 'all' ? undefined : currentStatus.value,
-          keyword: searchKeyword.value || undefined
+          page: currentPage.value - 1, // 后端使用0索引
+          size: pageSize.value
         }
         
-        const response = await get('/products/my', params)
-        
-        if (response.success) {
-          products.value = response.data.products || []
-          totalCount.value = response.data.totalCount || 0
-          
-          // 更新状态计数
-          if (response.data.statusCounts) {
-            statusOptions.value.forEach(option => {
-              option.count = response.data.statusCounts[option.value] || 0
-            })
+        // 添加状态筛选
+        if (currentStatus.value !== 'all') {
+          const statusMap = {
+            'active': 1,
+            'inactive': 2,
+            'sold': 3,
+            'draft': 0
           }
+          params.status = statusMap[currentStatus.value]
+        }
+        
+        // 添加搜索关键词
+        if (searchKeyword.value.trim()) {
+          params.title = searchKeyword.value.trim()
+        }
+        
+        const response = await get('/products/my', { params })
+        
+        if (response.code === 200) {
+          products.value = response.data.content || []
+          totalCount.value = response.data.totalElements || 0
+          updateStatusCounts()
         } else {
-          console.error('获取商品列表失败:', response.message)
+          console.error('获取商品失败:', response.message)
           products.value = []
+          totalCount.value = 0
         }
       } catch (error) {
-        console.error('获取商品列表失败:', error)
+        console.error('获取商品失败:', error)
         products.value = []
+        totalCount.value = 0
       } finally {
         loading.value = false
       }
     }
     
+    // 获取商品图片
+    const getProductImage = (product) => {
+      if (!product) return '/placeholder.png'
+      
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+      
+      const buildImageUrl = (imagePath) => {
+        if (!imagePath) return '/placeholder.png'
+        
+        if (imagePath.startsWith('http')) {
+          return imagePath
+        } else if (imagePath.startsWith('/uploads') || imagePath.startsWith('uploads')) {
+          return `${baseUrl}/${imagePath.replace(/^\//, '')}`
+        } else {
+          return `${baseUrl}/uploads/products/${imagePath}`
+        }
+      }
+      
+      if (product.image) {
+        return buildImageUrl(product.image)
+      }
+      
+      if (product.images) {
+        let images = product.images
+        if (typeof images === 'string') {
+          try {
+            images = JSON.parse(images)
+          } catch (e) {
+            return buildImageUrl(images)
+          }
+        }
+        
+        if (Array.isArray(images) && images.length > 0) {
+          return buildImageUrl(images[0])
+        }
+      }
+      
+      return '/placeholder.png'
+    }
+    
+    // 获取商品状态
+    const getProductStatus = (status) => {
+      const statusMap = {
+        0: 'draft',     // 已删除/草稿
+        1: 'active',    // 上架
+        2: 'inactive',  // 下架
+        3: 'sold'       // 已售出
+      }
+      return statusMap[status] || 'draft'
+    }
+    
+    // 更新状态计数
+    const updateStatusCounts = () => {
+      const counts = {
+        all: products.value.length,
+        active: 0,
+        inactive: 0,
+        sold: 0,
+        draft: 0
+      }
+      
+      products.value.forEach(product => {
+        const status = getProductStatus(product.status)
+        if (counts.hasOwnProperty(status)) {
+          counts[status]++
+        }
+      })
+      
+      statusOptions.value.forEach(option => {
+        option.count = counts[option.value] || 0
+      })
+    }
+    
+    // 搜索处理
     const handleSearch = () => {
       currentPage.value = 1
       fetchProducts()
     }
     
+    // 查看商品
     const viewProduct = (id) => {
       router.push(`/product/${id}`)
     }
     
+    // 编辑商品
     const editProduct = (id) => {
-      router.push(`/publish?edit=${id}`)
+      router.push(`/publish?id=${id}`)
     }
     
+    // 切换商品状态
     const toggleStatus = async (product) => {
       try {
-        const newStatus = product.status === 'active' ? 'inactive' : 'active'
-        const response = await put(`/products/${product.id}/status`, { status: newStatus })
+        const currentStatus = getProductStatus(product.status)
+        const newStatus = currentStatus === 'active' ? 2 : 1 // 2: 下架, 1: 上架
         
-        if (response.success) {
+        const response = await put(`/api/v1/products/${product.id}/status`, { status: newStatus })
+        
+        if (response.code === 200) {
           product.status = newStatus
-          // 重新获取数据以更新计数
-          fetchProducts()
+          updateStatusCounts()
+          alert(newStatus === 1 ? '商品已上架' : '商品已下架')
         } else {
-          alert('操作失败：' + response.message)
+          alert(response.message || '操作失败')
         }
       } catch (error) {
-        console.error('切换商品状态失败:', error)
+        console.error('切换状态失败:', error)
         alert('操作失败，请稍后重试')
       }
     }
     
+    // 删除商品
     const deleteProduct = (id) => {
       deleteProductId.value = id
       showDeleteModal.value = true
     }
     
+    // 确认删除
     const confirmDelete = async () => {
       try {
-        const response = await del(`/products/${deleteProductId.value}`)
+        const response = await del(`/api/v1/products/${deleteProductId.value}`)
         
-        if (response.success) {
+        if (response.code === 200) {
           showDeleteModal.value = false
           deleteProductId.value = null
-          fetchProducts()
+          fetchProducts() // 重新获取数据
+          alert('删除成功')
         } else {
-          alert('删除失败：' + response.message)
+          alert(response.message || '删除失败')
         }
       } catch (error) {
         console.error('删除商品失败:', error)
@@ -270,12 +360,13 @@ export default {
     }
     
     const getStatusText = (status) => {
-      const statusMap = {
-        active: '在售',
-        inactive: '已下架',
-        draft: '草稿'
+      const statusTextMap = {
+        'active': '在售',
+        'inactive': '已下架',
+        'sold': '已售出',
+        'draft': '草稿'
       }
-      return statusMap[status] || status
+      return statusTextMap[status] || '未知'
     }
     
     const formatDate = (dateString) => {
@@ -304,7 +395,6 @@ export default {
       visiblePages,
       statusOptions,
       showDeleteModal,
-      fetchProducts,
       handleSearch,
       viewProduct,
       editProduct,
@@ -312,7 +402,10 @@ export default {
       deleteProduct,
       confirmDelete,
       getStatusText,
-      formatDate
+      formatDate,
+      fetchProducts,
+      getProductImage,
+      getProductStatus
     }
   }
 }
@@ -330,94 +423,102 @@ export default {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 30px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid #eee;
+  padding: 20px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .page-header h1 {
   margin: 0;
   color: #333;
-  font-size: 28px;
+  font-size: 24px;
 }
 
 .publish-btn {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 24px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 12px 20px;
+  background: #2196f3;
   color: white;
   text-decoration: none;
   border-radius: 8px;
   font-weight: 500;
-  transition: all 0.3s ease;
+  transition: background-color 0.3s ease;
 }
 
 .publish-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  background: #1976d2;
 }
 
-.filter-section {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 30px;
-  gap: 20px;
-}
-
-.filter-tabs {
+.status-tabs {
   display: flex;
   gap: 8px;
-}
-
-.tab-btn {
-  padding: 10px 20px;
-  border: 1px solid #ddd;
+  margin-bottom: 20px;
+  padding: 8px;
   background: white;
-  border-radius: 6px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.status-tab {
+  padding: 12px 20px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
   cursor: pointer;
+  font-size: 14px;
+  color: #666;
   transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  gap: 6px;
 }
 
-.tab-btn:hover {
-  border-color: #667eea;
-  color: #667eea;
-}
-
-.tab-btn.active {
-  background: #667eea;
+.status-tab.active {
+  background: #2196f3;
   color: white;
-  border-color: #667eea;
 }
 
-.count {
-  font-size: 12px;
-  opacity: 0.8;
+.status-tab:hover:not(.active) {
+  background: #f5f5f5;
+}
+
+.search-section {
+  margin-bottom: 20px;
 }
 
 .search-box {
   position: relative;
-  width: 300px;
+  max-width: 400px;
+}
+
+.search-box svg {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #999;
 }
 
 .search-box input {
   width: 100%;
-  padding: 10px 40px 10px 16px;
+  padding: 12px 12px 12px 40px;
   border: 1px solid #ddd;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 14px;
+  background: white;
 }
 
-.search-box .icon-search {
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #999;
+.search-box input:focus {
+  outline: none;
+  border-color: #2196f3;
+  box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
+}
+
+.products-section {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .loading {
@@ -425,15 +526,15 @@ export default {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 60px 20px;
+  padding: 60px;
   color: #666;
 }
 
 .spinner {
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   border: 3px solid #f3f3f3;
-  border-top: 3px solid #667eea;
+  border-top: 3px solid #2196f3;
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 16px;
@@ -445,8 +546,11 @@ export default {
 }
 
 .empty-state {
-  text-align: center;
-  padding: 60px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px;
   color: #666;
 }
 
@@ -455,43 +559,22 @@ export default {
   margin-bottom: 20px;
 }
 
-.empty-state h3 {
-  margin: 0 0 10px 0;
-  color: #333;
-}
-
-.publish-btn-empty {
-  display: inline-block;
-  margin-top: 20px;
-  padding: 12px 24px;
-  background: #667eea;
-  color: white;
-  text-decoration: none;
-  border-radius: 6px;
-  transition: all 0.3s ease;
-}
-
-.publish-btn-empty:hover {
-  background: #5a67d8;
-}
-
 .products-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 24px;
+  gap: 20px;
 }
 
 .product-card {
-  background: white;
+  border: 1px solid #e0e0e0;
   border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   transition: all 0.3s ease;
 }
 
 .product-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
 }
 
 .product-image {
@@ -506,27 +589,31 @@ export default {
   object-fit: cover;
 }
 
-.status-badge {
+.product-status {
   position: absolute;
-  top: 12px;
-  right: 12px;
-  padding: 4px 12px;
-  border-radius: 12px;
+  top: 8px;
+  right: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
   font-size: 12px;
   font-weight: 500;
   color: white;
 }
 
-.status-badge.active {
-  background: #10b981;
+.product-status.active {
+  background: #4caf50;
 }
 
-.status-badge.inactive {
-  background: #6b7280;
+.product-status.inactive {
+  background: #ff9800;
 }
 
-.status-badge.draft {
-  background: #f59e0b;
+.product-status.sold {
+  background: #9e9e9e;
+}
+
+.product-status.draft {
+  background: #f44336;
 }
 
 .product-info {
@@ -536,111 +623,124 @@ export default {
 .product-title {
   margin: 0 0 8px 0;
   font-size: 16px;
-  font-weight: 600;
   color: #333;
+  font-weight: 500;
   line-height: 1.4;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 }
 
 .product-price {
   margin: 0 0 12px 0;
   font-size: 18px;
-  font-weight: 700;
-  color: #e53e3e;
+  color: #f44336;
+  font-weight: 600;
 }
 
 .product-meta {
   display: flex;
   justify-content: space-between;
   font-size: 12px;
-  color: #666;
+  color: #999;
 }
 
 .product-actions {
-  display: flex;
-  padding: 12px 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
+  padding: 16px;
   border-top: 1px solid #f0f0f0;
 }
 
 .action-btn {
-  flex: 1;
   padding: 8px 12px;
   border: 1px solid #ddd;
   background: white;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
   font-size: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
   transition: all 0.3s ease;
 }
 
-.action-btn:hover {
-  background: #f8f9fa;
+.action-btn.view {
+  color: #2196f3;
+  border-color: #2196f3;
 }
 
 .action-btn.view:hover {
-  border-color: #667eea;
-  color: #667eea;
+  background: #2196f3;
+  color: white;
+}
+
+.action-btn.edit {
+  color: #ff9800;
+  border-color: #ff9800;
 }
 
 .action-btn.edit:hover {
-  border-color: #10b981;
-  color: #10b981;
+  background: #ff9800;
+  color: white;
+}
+
+.action-btn.toggle {
+  color: #4caf50;
+  border-color: #4caf50;
+}
+
+.action-btn.toggle:hover {
+  background: #4caf50;
+  color: white;
+}
+
+.action-btn.toggle.active {
+  color: #ff9800;
+  border-color: #ff9800;
 }
 
 .action-btn.toggle.active:hover {
-  border-color: #f59e0b;
-  color: #f59e0b;
+  background: #ff9800;
+  color: white;
 }
 
-.action-btn.toggle.inactive:hover {
-  border-color: #10b981;
-  color: #10b981;
+.action-btn.delete {
+  color: #f44336;
+  border-color: #f44336;
 }
 
 .action-btn.delete:hover {
-  border-color: #e53e3e;
-  color: #e53e3e;
+  background: #f44336;
+  color: white;
 }
 
 .pagination {
   display: flex;
   justify-content: center;
   align-items: center;
-  margin-top: 40px;
+  margin-top: 30px;
   gap: 8px;
 }
 
 .page-btn {
-  padding: 8px 16px;
+  padding: 8px 12px;
   border: 1px solid #ddd;
   background: white;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
-  transition: all 0.3s ease;
+  font-size: 14px;
+  color: #333;
 }
 
 .page-btn:hover:not(:disabled) {
-  border-color: #667eea;
-  color: #667eea;
-}
-
-.page-btn.active {
-  background: #667eea;
-  color: white;
-  border-color: #667eea;
+  background: #f5f5f5;
 }
 
 .page-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.page-btn.active {
+  background: #2196f3;
+  color: white;
+  border-color: #2196f3;
 }
 
 .page-numbers {
@@ -661,21 +761,21 @@ export default {
   z-index: 1000;
 }
 
-.modal {
+.modal-content {
   background: white;
+  border-radius: 12px;
   padding: 24px;
-  border-radius: 8px;
   max-width: 400px;
   width: 90%;
 }
 
-.modal h3 {
-  margin: 0 0 16px 0;
+.modal-content h3 {
+  margin: 0 0 12px 0;
   color: #333;
 }
 
-.modal p {
-  margin: 0 0 24px 0;
+.modal-content p {
+  margin: 0 0 20px 0;
   color: #666;
   line-height: 1.5;
 }
@@ -686,65 +786,41 @@ export default {
   justify-content: flex-end;
 }
 
-.btn-cancel, .btn-confirm {
-  padding: 8px 20px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-}
-
 .btn-cancel {
+  padding: 8px 16px;
+  border: 1px solid #ddd;
   background: white;
+  border-radius: 6px;
+  cursor: pointer;
   color: #666;
 }
 
 .btn-cancel:hover {
-  background: #f8f9fa;
+  background: #f5f5f5;
 }
 
 .btn-confirm {
-  background: #e53e3e;
+  padding: 8px 16px;
+  border: 1px solid #f44336;
+  background: #f44336;
   color: white;
-  border-color: #e53e3e;
+  border-radius: 6px;
+  cursor: pointer;
 }
 
 .btn-confirm:hover {
-  background: #dc2626;
+  background: #d32f2f;
 }
 
-/* 图标样式 */
-.icon-plus::before { content: '+'; }
-.icon-search::before { content: '🔍'; }
-.icon-eye::before { content: '👁'; }
-.icon-edit::before { content: '✏️'; }
-.icon-play::before { content: '▶️'; }
-.icon-pause::before { content: '⏸️'; }
-.icon-trash::before { content: '🗑️'; }
-
-/* 响应式设计 */
 @media (max-width: 768px) {
-  .my-products {
-    padding: 16px;
-  }
-  
   .page-header {
     flex-direction: column;
     gap: 16px;
     align-items: stretch;
   }
   
-  .filter-section {
-    flex-direction: column;
-    gap: 16px;
-  }
-  
-  .filter-tabs {
+  .status-tabs {
     flex-wrap: wrap;
-  }
-  
-  .search-box {
-    width: 100%;
   }
   
   .products-grid {
@@ -752,6 +828,11 @@ export default {
   }
   
   .product-actions {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  
+  .modal-actions {
     flex-wrap: wrap;
   }
   

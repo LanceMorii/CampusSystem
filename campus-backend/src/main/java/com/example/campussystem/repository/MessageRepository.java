@@ -74,6 +74,11 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
     long countByToUserIdAndIsRead(Long toUserId, Integer isRead);
 
     /**
+     * 统计特定发送者发给用户的未读消息数量
+     */
+    long countByFromUserIdAndToUserIdAndIsRead(Long fromUserId, Long toUserId, Integer isRead);
+
+    /**
      * 统计两个用户之间的消息数量
      */
     @Query("SELECT COUNT(m) FROM Message m WHERE (m.fromUserId = :userId1 AND m.toUserId = :userId2) OR (m.fromUserId = :userId2 AND m.toUserId = :userId1)")
@@ -93,14 +98,14 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
      * 批量标记消息为已读
      */
     @Modifying
-    @Query("UPDATE Message m SET m.isRead = 1 WHERE m.toUserId = :toUserId AND m.fromUserId = :fromUserId AND m.isRead = 0")
+    @Query("UPDATE Message m SET m.isRead = 1, m.readTime = CURRENT_TIMESTAMP WHERE m.toUserId = :toUserId AND m.fromUserId = :fromUserId AND m.isRead = 0")
     int markMessagesAsRead(@Param("toUserId") Long toUserId, @Param("fromUserId") Long fromUserId);
 
     /**
      * 标记单条消息为已读
      */
     @Modifying
-    @Query("UPDATE Message m SET m.isRead = 1 WHERE m.id = :messageId AND m.toUserId = :toUserId")
+    @Query("UPDATE Message m SET m.isRead = 1, m.readTime = CURRENT_TIMESTAMP WHERE m.id = :messageId AND m.toUserId = :toUserId")
     int markMessageAsRead(@Param("messageId") Long messageId, @Param("toUserId") Long toUserId);
 
     /**

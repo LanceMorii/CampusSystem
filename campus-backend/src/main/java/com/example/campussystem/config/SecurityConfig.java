@@ -138,20 +138,22 @@ public class SecurityConfig {
                     "/auth/register",
                     "/auth/login",
                     "/auth/refresh",
-                    "/auth/test-jwt",
                     "/auth/health",
                     "/products",
                     "/products/{id}",
                     "/products/search",
                     "/categories",
                     "/categories/{id}/products",
+                    "/files/view/**",
                     "/health",
                     "/actuator/health",
                     "/swagger-ui/**",
                     "/swagger-ui.html",
                     "/v3/api-docs/**",
                     "/swagger-resources/**",
-                    "/webjars/**"
+                    "/webjars/**",
+                    "/ws/**",
+                    "/ws-sockjs/**"
                 ).permitAll()
                 
                 // 需要USER角色的接口

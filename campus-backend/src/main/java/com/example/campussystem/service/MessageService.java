@@ -18,6 +18,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -33,6 +34,9 @@ public class MessageService {
 
     @Autowired
     private MessageRepository messageRepository;
+    
+    @Autowired
+    private WebSocketService webSocketService;
 
     @Autowired
     private UserRepository userRepository;
@@ -43,7 +47,11 @@ public class MessageService {
     /**
      * 发送消息
      */
+    @Transactional
     public MessageResponse sendMessage(MessageRequest request, Long fromUserId) {
+        // 添加调试日志
+        System.out.println("发送消息调试: fromUserId=" + fromUserId + ", toUserId=" + request.getToUserId());
+        
         // 验证接收者是否存在
         User toUser = userRepository.findById(request.getToUserId())
                 .orElseThrow(() -> new BusinessException("接收者不存在"));
@@ -52,8 +60,13 @@ public class MessageService {
         User fromUser = userRepository.findById(fromUserId)
                 .orElseThrow(() -> new BusinessException("发送者不存在"));
 
-        // 验证不能给自己发消息
-        if (fromUserId.equals(request.getToUserId())) {
+        System.out.println("用户信息调试: fromUser.studentId=" + fromUser.getStudentId() + 
+                          ", toUser.studentId=" + toUser.getStudentId());
+
+        // 验证不能给自己发消息 - 使用学号比较而不是ID比较
+        if (fromUser.getStudentId().equals(toUser.getStudentId())) {
+            System.out.println("检测到自发消息: fromUser.studentId=" + fromUser.getStudentId() + 
+                              ", toUser.studentId=" + toUser.getStudentId());
             throw new BusinessException("不能给自己发送消息");
         }
 
@@ -67,7 +80,17 @@ public class MessageService {
         message.setIsRead(0); // 未读
 
         Message savedMessage = messageRepository.save(message);
-        return convertToResponse(savedMessage);
+        MessageResponse response = convertToResponse(savedMessage);
+        
+        // 通过WebSocket发送实时通知
+        try {
+            webSocketService.sendNewMessageNotification(request.getToUserId(), response);
+        } catch (Exception e) {
+            // 记录错误但不影响消息发送的主流程
+            System.err.println("发送WebSocket通知失败: " + e.getMessage());
+        }
+        
+        return response;
     }
 
     /**
@@ -115,8 +138,8 @@ public class MessageService {
             User contact = userRepository.findById(contactUserId).orElse(null);
             if (contact == null) continue;
 
-            // 统计未读消息数量
-            long unreadCount = messageRepository.countByToUserIdAndIsRead(userId, 0);
+            // 统计与该联系人的未读消息数量
+            long unreadCount = messageRepository.countByFromUserIdAndToUserIdAndIsRead(contactUserId, userId, 0);
 
             ConversationResponse conversation = new ConversationResponse();
             conversation.setContactUserId(contactUserId);
@@ -165,7 +188,7 @@ public class MessageService {
             throw new BusinessException("无权限操作此消息");
         }
 
-        message.setIsRead(1);
+        message.markAsRead(); // 使用实体的方法，会同时设置isRead=1和readTime
         messageRepository.save(message);
     }
 
@@ -265,6 +288,15 @@ public class MessageService {
         List<Message> messages = messageRepository.findMessagesByKeyword(keyword);
         return messages.stream().map(this::convertToResponse).collect(Collectors.toList());
     }
+    
+    /**
+     * 获取用户的会话更新（用于轮询）
+     */
+    @Transactional(readOnly = true)
+    public List<ConversationResponse> getConversations(Long userId) {
+        // 复用现有的获取对话列表方法
+        return getConversationList(userId);
+    }
 
     /**
      * 在对话中搜索消息
@@ -316,6 +348,11 @@ public class MessageService {
         response.setTypeText(getTypeText(message.getType()));
         response.setIsRead(message.getIsRead());
         response.setCreateTime(message.getCreateTime());
+        response.setReadTime(message.getReadTime());
+        
+        // 设置已读状态
+        response.setIsUnread(message.getIsRead() == 0);
+        response.setReadStatus(getReadStatusText(message.getIsRead(), message.getReadTime()));
 
         // 设置发送者信息
         if (message.getFromUser() != null) {
@@ -370,6 +407,19 @@ public class MessageService {
                 return "图片";
             default:
                 return "未知类型";
+        }
+    }
+
+    /**
+     * 获取已读状态文本
+     */
+    private String getReadStatusText(Integer isRead, LocalDateTime readTime) {
+        if (isRead == 0) {
+            return "未读";
+        } else if (readTime != null) {
+            return "已读";
+        } else {
+            return "已发送";
         }
     }
 }

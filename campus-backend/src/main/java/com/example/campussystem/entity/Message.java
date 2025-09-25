@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
@@ -40,12 +41,40 @@ public class Message {
     @Column(name = "type")
     private Integer type = 1; // 1文本,2图片
 
+    @Column(name = "message_type", length = 20)
+    private String messageType = "TEXT"; // TEXT, IMAGE, SYSTEM, JOIN, LEAVE, VIDEO, GIFT
+
+    @Column(name = "session_id", length = 100)
+    private String sessionId;
+
+    @Column(name = "sender_nickname", length = 50)
+    private String senderNickname;
+
+    @Column(name = "image_url", length = 500)
+    private String imageUrl;
+
+    @Column(name = "video_url", length = 500)
+    private String videoUrl;
+
+    @Column(name = "video_title", length = 100)
+    private String videoTitle;
+
+    @Column(name = "send_time")
+    private LocalDateTime sendTime;
+
     @Column(name = "is_read")
     private Integer isRead = 0; // 0未读,1已读
+
+    @Column(name = "read_time")
+    private LocalDateTime readTime; // 已读时间
 
     @CreatedDate
     @Column(name = "create_time", updatable = false)
     private LocalDateTime createTime;
+
+    @LastModifiedDate
+    @Column(name = "update_time")
+    private LocalDateTime updateTime;
 
     // 多对一关系：消息的发送者
     @ManyToOne(fetch = FetchType.LAZY)
@@ -135,12 +164,76 @@ public class Message {
         this.isRead = isRead;
     }
 
+    public String getMessageType() {
+        return messageType;
+    }
+
+    public void setMessageType(String messageType) {
+        this.messageType = messageType;
+    }
+
+    public String getSessionId() {
+        return sessionId;
+    }
+
+    public void setSessionId(String sessionId) {
+        this.sessionId = sessionId;
+    }
+
+    public String getSenderNickname() {
+        return senderNickname;
+    }
+
+    public void setSenderNickname(String senderNickname) {
+        this.senderNickname = senderNickname;
+    }
+
+    public String getImageUrl() {
+        return imageUrl;
+    }
+
+    public void setImageUrl(String imageUrl) {
+        this.imageUrl = imageUrl;
+    }
+
     public LocalDateTime getCreateTime() {
         return createTime;
     }
 
     public void setCreateTime(LocalDateTime createTime) {
         this.createTime = createTime;
+    }
+
+    public LocalDateTime getUpdateTime() {
+        return updateTime;
+    }
+
+    public void setUpdateTime(LocalDateTime updateTime) {
+        this.updateTime = updateTime;
+    }
+
+    public String getVideoUrl() {
+        return videoUrl;
+    }
+
+    public void setVideoUrl(String videoUrl) {
+        this.videoUrl = videoUrl;
+    }
+
+    public String getVideoTitle() {
+        return videoTitle;
+    }
+
+    public void setVideoTitle(String videoTitle) {
+        this.videoTitle = videoTitle;
+    }
+
+    public LocalDateTime getSendTime() {
+        return sendTime;
+    }
+
+    public void setSendTime(LocalDateTime sendTime) {
+        this.sendTime = sendTime;
     }
 
     public User getFromUser() {
@@ -169,11 +262,31 @@ public class Message {
 
     // 业务方法
     public boolean isTextMessage() {
-        return type == 1;
+        return type == 1 || "TEXT".equals(messageType);
     }
 
     public boolean isImageMessage() {
-        return type == 2;
+        return type == 2 || "IMAGE".equals(messageType);
+    }
+
+    public boolean isSystemMessage() {
+        return "SYSTEM".equals(messageType);
+    }
+
+    public boolean isJoinMessage() {
+        return "JOIN".equals(messageType);
+    }
+
+    public boolean isLeaveMessage() {
+        return "LEAVE".equals(messageType);
+    }
+
+    public boolean isVideoMessage() {
+        return "VIDEO".equals(messageType);
+    }
+
+    public boolean isGiftMessage() {
+        return "GIFT".equals(messageType);
     }
 
     public boolean isUnread() {
@@ -182,6 +295,15 @@ public class Message {
 
     public void markAsRead() {
         this.isRead = 1;
+        this.readTime = LocalDateTime.now();
+    }
+
+    public LocalDateTime getReadTime() {
+        return readTime;
+    }
+
+    public void setReadTime(LocalDateTime readTime) {
+        this.readTime = readTime;
     }
 
     @Override

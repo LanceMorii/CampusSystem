@@ -9,15 +9,24 @@ import com.example.campussystem.dto.UserUpdateRequest;
 import com.example.campussystem.entity.User;
 import com.example.campussystem.exception.BusinessException;
 import com.example.campussystem.repository.UserRepository;
+import com.example.campussystem.repository.OrderRepository;
 import com.example.campussystem.util.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.TimeUnit;
+import org.springframework.context.ApplicationContext;
 
 /**
  * 用户服务类
@@ -36,6 +45,12 @@ public class UserService {
 
     @Autowired
     private CacheService cacheService;
+
+    @Autowired
+    private ApplicationContext applicationContext;
+
+    @Autowired
+    private OrderRepository orderRepository;
 
     // 缓存键常量
     private static final String CACHE_KEY_USER_PROFILE = "user_profile:";
@@ -322,6 +337,56 @@ public class UserService {
         }
         
         return null;
+    }
+
+
+
+    /**
+     * 获取用户交易统计
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> getUserTradeStats(Long userId) {
+        String cacheKey = "user_trade_stats:" + userId;
+        
+        // 先从缓存获取
+        Map<String, Object> cachedStats = cacheService.get(cacheKey, Map.class);
+        if (cachedStats != null) {
+            return cachedStats;
+        }
+
+        // 验证用户是否存在
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException("用户不存在"));
+
+        Map<String, Object> stats = new HashMap<>();
+        
+        try {
+            // 直接从数据库获取真实的交易统计数据
+            // 成功交易次数（作为买家或卖家，状态为已完成的订单）
+            Long successCount = orderRepository.countSuccessfulOrdersByUserId(userId);
+            
+            // 成功交易总金额
+            BigDecimal totalAmount = orderRepository.sumSuccessfulOrderAmountByUserId(userId);
+            
+            stats.put("successCount", successCount);
+            stats.put("totalAmount", totalAmount != null ? totalAmount.doubleValue() : 0.0);
+            stats.put("registrationTime", user.getCreateTime());
+            stats.put("lastUpdated", LocalDateTime.now());
+            
+        } catch (Exception e) {
+            // 如果获取统计数据失败，返回默认值
+            System.err.println("获取用户统计数据失败: " + e.getMessage());
+            stats.put("successCount", 0L);
+            stats.put("totalAmount", 0.0);
+            stats.put("registrationTime", user.getCreateTime());
+            stats.put("lastUpdated", LocalDateTime.now());
+            stats.put("error", "数据查询失败");
+        }
+
+        // 缓存统计数据，缓存15分钟
+        cacheService.set(cacheKey, stats, 15, TimeUnit.MINUTES);
+
+        return stats;
     }
 
     /**

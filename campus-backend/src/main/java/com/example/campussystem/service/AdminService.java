@@ -343,7 +343,7 @@ public class AdminService {
     }
 
     /**
-     * 获取系统日志（模拟实现）
+     * 获取系统日志
      */
     @Transactional(readOnly = true)
     public Page<Map<String, Object>> getSystemLogs(int page, int size, String level, String keyword) {

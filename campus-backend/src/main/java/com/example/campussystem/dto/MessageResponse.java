@@ -24,6 +24,11 @@ public class MessageResponse {
     private String typeText;
     private Integer isRead;
     private LocalDateTime createTime;
+    private LocalDateTime readTime; // 已读时间
+    
+    // 消息状态相关
+    private Boolean isUnread; // 是否未读
+    private String readStatus; // 已读状态文本：未读/已读/已发送
 
     // 构造函数
     public MessageResponse() {}
@@ -188,6 +193,30 @@ public class MessageResponse {
         this.createTime = createTime;
     }
 
+    public LocalDateTime getReadTime() {
+        return readTime;
+    }
+
+    public void setReadTime(LocalDateTime readTime) {
+        this.readTime = readTime;
+    }
+
+    public Boolean getIsUnread() {
+        return isUnread;
+    }
+
+    public void setIsUnread(Boolean isUnread) {
+        this.isUnread = isUnread;
+    }
+
+    public String getReadStatus() {
+        return readStatus;
+    }
+
+    public void setReadStatus(String readStatus) {
+        this.readStatus = readStatus;
+    }
+
     @Override
     public String toString() {
         return "MessageResponse{" +
@@ -208,6 +237,9 @@ public class MessageResponse {
                 ", typeText='" + typeText + '\'' +
                 ", isRead=" + isRead +
                 ", createTime=" + createTime +
+                ", readTime=" + readTime +
+                ", isUnread=" + isUnread +
+                ", readStatus='" + readStatus + '\'' +
                 '}';
     }
 }

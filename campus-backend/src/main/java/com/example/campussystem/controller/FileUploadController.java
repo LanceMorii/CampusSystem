@@ -61,7 +61,7 @@ public class FileUploadController {
             result.put("filePath", filePath);
             result.put("fileName", file.getOriginalFilename());
             result.put("fileSize", file.getSize());
-            result.put("url", "/api/files/view/" + filePath);
+            result.put("url", "/api/v1/files/view/" + filePath);
             
             return ResponseEntity.ok(ApiResponse.success("图片上传成功", result));
             
@@ -92,7 +92,7 @@ public class FileUploadController {
                 result.put("filePath", filePath);
                 result.put("fileName", file.getOriginalFilename());
                 result.put("fileSize", file.getSize());
-                result.put("url", "/api/files/view/" + filePath);
+                result.put("url", "/api/v1/files/view/" + filePath);
                 result.put("success", true);
                 
                 results.add(result);
@@ -146,7 +146,7 @@ public class FileUploadController {
             result.put("filePath", filePath);
             result.put("fileName", file.getOriginalFilename());
             result.put("fileSize", file.getSize());
-            result.put("url", "/api/files/download/" + filePath);
+            result.put("url", "/api/v1/files/download/" + filePath);
             
             return ResponseEntity.ok(ApiResponse.success("文件上传成功", result));
             
@@ -162,26 +162,48 @@ public class FileUploadController {
     @GetMapping("/view/**")
     public ResponseEntity<Resource> viewFile(HttpServletRequest request) {
         try {
-            // 获取文件路径
-            String filePath = extractFilePath(request, "/api/files/view/");
+            // 获取文件路径 - 从请求URI中提取
+            String requestURI = request.getRequestURI();
+            System.out.println("Request URI: " + requestURI);
+            String filePath;
+            
+            // 处理不同的URL格式
+            if (requestURI.contains("/api/v1/files/view/")) {
+                filePath = requestURI.substring(requestURI.indexOf("/api/v1/files/view/") + "/api/v1/files/view/".length());
+            } else if (requestURI.contains("/files/view/")) {
+                filePath = requestURI.substring(requestURI.indexOf("/files/view/") + "/files/view/".length());
+            } else {
+                System.out.println("URL format not recognized");
+                return ResponseEntity.notFound().build();
+            }
+            
+            System.out.println("Extracted file path: " + filePath);
             
             // 获取文件资源
             Path file = Paths.get("uploads").resolve(filePath);
+            System.out.println("Full file path: " + file.toAbsolutePath());
             Resource resource = new UrlResource(file.toUri());
             
+            System.out.println("Resource exists: " + resource.exists());
+            System.out.println("Resource readable: " + resource.isReadable());
+            
             if (!resource.exists() || !resource.isReadable()) {
+                System.out.println("Resource not found or not readable");
                 return ResponseEntity.notFound().build();
             }
             
             // 确定文件类型
             String contentType = determineContentType(filePath);
+            System.out.println("Content type: " + contentType);
             
             return ResponseEntity.ok()
                     .contentType(MediaType.parseMediaType(contentType))
                     .header(HttpHeaders.CACHE_CONTROL, "max-age=3600")
                     .body(resource);
                     
-        } catch (MalformedURLException e) {
+        } catch (Exception e) {
+            System.out.println("Exception in viewFile: " + e.getMessage());
+            e.printStackTrace();
             return ResponseEntity.badRequest().build();
         }
     }
@@ -193,7 +215,7 @@ public class FileUploadController {
     public ResponseEntity<Resource> downloadFile(HttpServletRequest request) {
         try {
             // 获取文件路径
-            String filePath = extractFilePath(request, "/api/files/download/");
+            String filePath = extractFilePath(request, "/api/v1/files/download/");
             
             // 获取文件资源
             Path file = Paths.get("uploads").resolve(filePath);
@@ -285,6 +307,8 @@ public class FileUploadController {
                 return "image/png";
             case "gif":
                 return "image/gif";
+            case "svg":
+                return "image/svg+xml";
             case "webp":
                 return "image/webp";
             case "bmp":

@@ -59,6 +59,28 @@ public class User {
     @Column(name = "role", length = 20)
     private String role = "USER"; // 用户角色：USER普通用户，ADMIN管理员
 
+    // 聊天相关字段，借鉴mars-chat设计
+    @Column(name = "nickname", length = 50)
+    private String nickname; // 聊天昵称
+
+    @Column(name = "session_id", length = 100)
+    private String sessionId; // WebSocket会话ID
+
+    @Column(name = "online")
+    private Boolean online = false; // 是否在线
+
+    @Column(name = "last_active_time")
+    private LocalDateTime lastActiveTime; // 最后活跃时间
+
+    @Column(name = "banned")
+    private Boolean banned = false; // 是否被禁言
+
+    @Column(name = "ban_reason", length = 200)
+    private String banReason; // 禁言原因
+
+    @Column(name = "ban_expire_time")
+    private LocalDateTime banExpireTime; // 禁言到期时间
+
     @CreatedDate
     @Column(name = "create_time", updatable = false)
     private LocalDateTime createTime;
@@ -232,6 +254,79 @@ public class User {
 
     public void setReceivedMessages(List<Message> receivedMessages) {
         this.receivedMessages = receivedMessages;
+    }
+
+    // 聊天相关字段的getter和setter方法
+    public String getNickname() {
+        return nickname;
+    }
+
+    public void setNickname(String nickname) {
+        this.nickname = nickname;
+    }
+
+    public String getSessionId() {
+        return sessionId;
+    }
+
+    public void setSessionId(String sessionId) {
+        this.sessionId = sessionId;
+    }
+
+    public Boolean getOnline() {
+        return online;
+    }
+
+    public void setOnline(Boolean online) {
+        this.online = online;
+    }
+
+    public LocalDateTime getLastActiveTime() {
+        return lastActiveTime;
+    }
+
+    public void setLastActiveTime(LocalDateTime lastActiveTime) {
+        this.lastActiveTime = lastActiveTime;
+    }
+
+    public Boolean getBanned() {
+        return banned;
+    }
+
+    public void setBanned(Boolean banned) {
+        this.banned = banned;
+    }
+
+    public String getBanReason() {
+        return banReason;
+    }
+
+    public void setBanReason(String banReason) {
+        this.banReason = banReason;
+    }
+
+    public LocalDateTime getBanExpireTime() {
+        return banExpireTime;
+    }
+
+    public void setBanExpireTime(LocalDateTime banExpireTime) {
+        this.banExpireTime = banExpireTime;
+    }
+
+    /**
+     * 检查用户是否被禁言（借鉴mars-chat设计）
+     */
+    public boolean isCurrentlyBanned() {
+        if (banned == null || !banned) {
+            return false;
+        }
+        
+        // 如果有到期时间且已过期，则不再禁言
+        if (banExpireTime != null && banExpireTime.isBefore(LocalDateTime.now())) {
+            return false;
+        }
+        
+        return true;
     }
 
     @Override

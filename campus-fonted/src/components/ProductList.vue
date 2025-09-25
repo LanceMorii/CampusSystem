@@ -8,44 +8,69 @@
     <!-- 筛选区域 -->
     <div class="filter-section">
       <div class="filter-row">
-        <div class="filter-item">
-          <label>商品名称：</label>
-          <input 
-            v-model="filters.name" 
-            type="text" 
-            placeholder="请输入商品名称"
-            @input="handleSearch"
-          />
+        <!-- 搜索框 -->
+        <div class="search-item">
+          <div class="search-input-wrapper">
+            <input 
+              v-model="filters.name" 
+              type="text" 
+              placeholder="搜索商品名称..."
+              @input="handleSearch"
+              class="search-input"
+            />
+            <button class="search-btn" @click="handleSearch">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+              </svg>
+            </button>
+          </div>
         </div>
-        <div class="filter-item">
-          <label>商品分类：</label>
-          <select v-model="filters.category" @change="handleSearch">
+        
+        <!-- 分类选择 -->
+        <div class="category-item">
+          <select v-model="filters.category" @change="handleSearch" class="category-select">
             <option value="">全部分类</option>
-            <option value="electronics">电子产品</option>
-            <option value="books">图书教材</option>
-            <option value="clothing">服装配饰</option>
-            <option value="sports">运动用品</option>
-            <option value="daily">生活用品</option>
-            <option value="other">其他</option>
+            <option value="1">电子产品</option>
+            <option value="2">图书教材</option>
+            <option value="3">生活用品</option>
+            <option value="4">服装配饰</option>
+            <option value="5">运动健身</option>
+            <option value="6">其他</option>
           </select>
         </div>
-        <div class="filter-item">
-          <label>价格范围：</label>
-          <input 
-            v-model="filters.minPrice" 
-            type="number" 
-            placeholder="最低价"
-            @input="handleSearch"
-          />
-          <span>-</span>
-          <input 
-            v-model="filters.maxPrice" 
-            type="number" 
-            placeholder="最高价"
-            @input="handleSearch"
-          />
+        
+        <!-- 价格范围 -->
+        <div class="price-item">
+          <div class="price-inputs">
+            <input 
+              v-model="filters.minPrice" 
+              type="number" 
+              placeholder="最低价"
+              @input="handleSearch"
+              class="price-input"
+            />
+            <span class="price-separator">-</span>
+            <input 
+              v-model="filters.maxPrice" 
+              type="number" 
+              placeholder="最高价"
+              @input="handleSearch"
+              class="price-input"
+            />
+          </div>
         </div>
-        <button class="reset-btn" @click="resetFilters">重置</button>
+        
+        <!-- 重置按钮 -->
+        <button class="reset-btn" @click="resetFilters">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
+            <path d="M21 3v5h-5"></path>
+            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
+            <path d="M3 21v-5h5"></path>
+          </svg>
+          重置
+        </button>
       </div>
     </div>
     
@@ -133,7 +158,7 @@ const router = useRouter()
 const products = ref([])
 const loading = ref(false)
 const currentPage = ref(1)
-const pageSize = ref(12)
+const pageSize = ref(20) // 增加页面大小以显示更多产品
 const totalCount = ref(0)
 const totalPages = ref(0)
 
@@ -162,12 +187,25 @@ const fetchProducts = async () => {
   loading.value = true
   try {
     const params = {
-      page: currentPage.value - 1, // Spring Data JPA的页码从0开始
-      size: pageSize.value, // 使用size而不是pageSize
-      ...filters.value
+      page: currentPage.value - 1, // 后端从0开始
+      size: pageSize.value
     }
     
-    // 清理空值参数
+    // 添加搜索条件
+    if (filters.value.name) {
+      params.name = filters.value.name
+    }
+    if (filters.value.category) {
+      params.categoryId = filters.value.category
+    }
+    if (filters.value.minPrice) {
+      params.minPrice = parseFloat(filters.value.minPrice)
+    }
+    if (filters.value.maxPrice) {
+      params.maxPrice = parseFloat(filters.value.maxPrice)
+    }
+    
+    // 过滤掉空值
     Object.keys(params).forEach(key => {
       if (params[key] === '' || params[key] === null || params[key] === undefined) {
         delete params[key]
@@ -175,14 +213,12 @@ const fetchProducts = async () => {
     })
     
     console.log('获取商品列表，参数：', params)
-    console.log('请求URL：', '/products')
     
     const response = await get('/products', params)
     
     console.log('API响应：', response)
     
     if (response && response.code === 200) {
-      // 后端返回的是Spring Data的Page对象结构
       const pageData = response.data
       console.log('页面数据：', pageData)
       
@@ -191,16 +227,17 @@ const fetchProducts = async () => {
         totalCount.value = pageData.totalElements || 0
         totalPages.value = pageData.totalPages || 0
         console.log('商品列表设置成功，商品数量：', products.value.length)
+        console.log('商品数据：', products.value)
       } else {
         console.log('页面数据结构异常：', pageData)
         products.value = []
       }
     } else {
-      console.log('获取商品列表失败:', response ? response.message : '响应为空')
+      console.error('获取商品列表失败:', response)
       products.value = []
     }
   } catch (error) {
-    console.log('获取商品列表异常:', error)
+    console.error('获取商品列表异常:', error)
     products.value = []
   } finally {
     loading.value = false
@@ -247,30 +284,44 @@ const getCategoryName = (category) => {
 }
 
 const getProductImage = (product) => {
-  if (product.images) {
-    let images = product.images
-    
-    // 如果images是JSON字符串，解析为数组
-    if (typeof images === 'string') {
-      try {
-        images = JSON.parse(images)
-      } catch (e) {
-        console.error('解析图片JSON失败:', e)
-        return '/placeholder.jpg'
-      }
-    }
-    
-    // 如果是数组且有内容，取第一张图片
-    if (Array.isArray(images) && images.length > 0) {
-      let imageUrl = images[0]
-      // 如果图片URL被双引号包围，去掉引号
-      if (typeof imageUrl === 'string' && imageUrl.startsWith('"') && imageUrl.endsWith('"')) {
-        imageUrl = imageUrl.slice(1, -1)
-      }
-      return imageUrl
-    }
+  if (!product) return '/placeholder.png'
+  
+  // 处理图片数组
+  if (product.images && Array.isArray(product.images) && product.images.length > 0) {
+    const firstImage = product.images[0]
+    return getImageUrl(firstImage)
   }
-  return '/placeholder.jpg'
+  
+  // 处理单个图片
+  if (product.image) {
+    return getImageUrl(product.image)
+  }
+  
+  return '/placeholder.png'
+}
+
+// 图片URL处理
+const getImageUrl = (imageUrl) => {
+  if (!imageUrl) return '/placeholder.png'
+  
+  let cleanPath = imageUrl.toString().trim()
+  if (cleanPath.startsWith('"') && cleanPath.endsWith('"')) {
+    cleanPath = cleanPath.slice(1, -1)
+  }
+  
+  if (cleanPath.startsWith('http://') || cleanPath.startsWith('https://')) {
+    return cleanPath
+  }
+  
+  if (cleanPath.startsWith('/api')) {
+    return `http://localhost:8080${cleanPath}`
+  }
+  
+  if (cleanPath.startsWith('/')) {
+    return `http://localhost:8080/api/v1/files/view${cleanPath}`
+  }
+  
+  return `http://localhost:8080/api/v1/files/view/${cleanPath}`
 }
 
 const formatTime = (timestamp) => {
@@ -284,6 +335,14 @@ onMounted(() => {
   fetchProducts()
 })
 
+// 监听路由变化，当从发布页面返回时刷新数据
+watch(() => router.currentRoute.value, (newRoute, oldRoute) => {
+  if (newRoute.path === '/products' && oldRoute?.path === '/publish') {
+    // 从发布页面返回，刷新商品列表
+    fetchProducts()
+  }
+}, { immediate: false })
+
 // 监听筛选条件变化
 watch(filters, () => {
   // 防抖处理
@@ -296,8 +355,8 @@ watch(filters, () => {
 
 <style scoped>
 .product-list-container {
-  max-width: 1200px;
-  margin: 0 auto;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   padding: 20px;
 }
 
@@ -306,88 +365,196 @@ watch(filters, () => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 30px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  padding: 24px 32px;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .header h1 {
   color: #333;
-  font-size: 28px;
+  font-size: 32px;
+  font-weight: 700;
   margin: 0;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .publish-btn {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   border: none;
-  padding: 12px 24px;
-  border-radius: 8px;
+  padding: 14px 28px;
+  border-radius: 12px;
   cursor: pointer;
+  font-weight: 600;
   font-size: 16px;
-  transition: transform 0.2s;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 
 .publish-btn:hover {
   transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
 }
 
+/* 筛选区域样式 */
 .filter-section {
-  background: white;
-  padding: 20px;
-  border-radius: 12px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-  margin-bottom: 30px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  padding: 24px;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  margin-bottom: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .filter-row {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
   gap: 20px;
-  align-items: end;
+  flex-wrap: wrap;
 }
 
-.filter-item {
+.search-item {
+  flex: 2;
+  min-width: 300px;
+}
+
+.search-input-wrapper {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  align-items: center;
+  position: relative;
+  border: 2px solid rgba(102, 126, 234, 0.2);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+  background: white;
 }
 
-.filter-item label {
-  font-weight: 500;
+.search-input-wrapper:focus-within {
+  border-color: #667eea;
+  box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+  transform: translateY(-1px);
+}
+
+.search-input {
+  flex: 1;
+  padding: 14px 18px;
+  border: none;
+  outline: none;
+  font-size: 15px;
   color: #333;
-  font-size: 14px;
+  background: transparent;
 }
 
-.filter-item input,
-.filter-item select {
-  padding: 8px 12px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  font-size: 14px;
-  min-width: 120px;
+.search-input::placeholder {
+  color: #999;
 }
 
-.filter-item input:focus,
-.filter-item select:focus {
+.search-btn {
+  padding: 14px 18px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  min-width: 52px;
+}
+
+.search-btn:hover {
+  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+  transform: scale(1.05);
+}
+
+.category-item {
+  flex: 1;
+  min-width: 160px;
+}
+
+.category-select {
+  width: 100%;
+  padding: 14px 16px;
+  border: 2px solid rgba(102, 126, 234, 0.2);
+  border-radius: 12px;
+  font-size: 15px;
+  color: #333;
+  background: white;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.category-select:focus {
   outline: none;
   border-color: #667eea;
+  box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+  transform: translateY(-1px);
 }
 
-.filter-item span {
-  margin: 0 8px;
-  color: #666;
+.price-item {
+  flex: 1;
+  min-width: 200px;
+}
+
+.price-inputs {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.price-input {
+  flex: 1;
+  padding: 14px 16px;
+  border: 2px solid rgba(102, 126, 234, 0.2);
+  border-radius: 12px;
+  font-size: 15px;
+  color: #333;
+  background: white;
+  transition: all 0.3s ease;
+  min-width: 80px;
+}
+
+.price-input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+  transform: translateY(-1px);
+}
+
+.price-separator {
+  color: #667eea;
+  font-weight: 600;
+  font-size: 16px;
 }
 
 .reset-btn {
-  background: #f5f5f5;
-  color: #666;
-  border: 1px solid #ddd;
-  padding: 8px 16px;
-  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(102, 126, 234, 0.1);
+  color: #667eea;
+  border: 2px solid rgba(102, 126, 234, 0.2);
+  padding: 14px 20px;
+  border-radius: 12px;
   cursor: pointer;
   font-size: 14px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  white-space: nowrap;
 }
 
 .reset-btn:hover {
-  background: #e5e5e5;
+  background: rgba(102, 126, 234, 0.15);
+  border-color: #667eea;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
 }
 
 .product-grid {
@@ -551,18 +718,59 @@ watch(filters, () => {
     align-items: stretch;
   }
   
+  .filter-section {
+    padding: 16px;
+  }
+  
   .filter-row {
-    flex-direction: column;
     gap: 16px;
   }
   
-  .filter-item {
-    flex-direction: row;
-    align-items: center;
+  .search-group {
+    width: 100%;
   }
   
-  .filter-item label {
-    min-width: 80px;
+  .search-item {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  
+  .search-input-wrapper {
+    max-width: none;
+  }
+  
+  .filters-group {
+    flex-direction: column;
+    gap: 16px;
+    align-items: stretch;
+  }
+  
+  .filter-item {
+    min-width: auto;
+    width: 100%;
+  }
+  
+  .price-range {
+    min-width: auto;
+  }
+  
+  .price-inputs {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .price-input {
+    min-width: auto;
+  }
+  
+  .price-separator {
+    display: none;
+  }
+  
+  .reset-btn {
+    width: 100%;
+    justify-content: center;
   }
   
   .product-grid {
@@ -580,6 +788,45 @@ watch(filters, () => {
     margin-top: 10px;
     text-align: center;
     width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .product-list-container {
+    padding: 12px;
+  }
+  
+  .filter-section {
+    padding: 12px;
+  }
+  
+  .search-input-wrapper {
+    border-radius: 6px;
+  }
+  
+  .search-input {
+    padding: 10px 12px;
+    font-size: 16px; /* 防止iOS缩放 */
+  }
+  
+  .search-btn {
+    padding: 10px 12px;
+    min-width: 44px;
+  }
+  
+  .filter-item input,
+  .filter-item select {
+    padding: 10px 12px;
+    font-size: 16px; /* 防止iOS缩放 */
+  }
+  
+  .product-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  
+  .product-card {
+    border-radius: 8px;
   }
 }
 </style>

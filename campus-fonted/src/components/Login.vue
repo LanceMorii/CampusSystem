@@ -69,18 +69,52 @@ const handleLogin = async () => {
   
   try {
     const response = await login(form.value)
+    console.log('登录响应:', response)
     
     if (response.code === 200) {
-      // 登录成功，保存token和用户信息
-      localStorage.setItem('token', response.data.token)
-      localStorage.setItem('userInfo', JSON.stringify(response.data.userInfo))
+      const data = response.data || {}
       
-      // 跳转到首页
+      // 保存token
+      if (data.token) {
+        localStorage.setItem('token', data.token)
+      }
+      
+      // 标准化并保存用户信息（后端返回的是UserLoginResponse，而不是userInfo）
+      const normalizedUser = {
+        id: data.userId,
+        userId: data.userId,
+        studentId: data.studentId,
+        username: data.username,
+        realName: data.realName,
+        phone: data.phone,
+        email: data.email,
+        avatar: data.avatar,
+        loginTime: data.loginTime
+      }
+      localStorage.setItem('userInfo', JSON.stringify(normalizedUser))
+      
+      if (data.userId) {
+        localStorage.setItem('userId', String(data.userId))
+      }
+      
+      // 确保WebSocket连接使用新token（不阻塞跳转）
+      try {
+        if (window.messageService && typeof window.messageService.reconnect === 'function') {
+          window.messageService.reconnect()
+        }
+      } catch (wsErr) {
+        console.warn('WebSocket重连失败:', wsErr)
+      }
+      
+      console.log('准备跳转到首页...')
       router.push('/home')
+        .then(() => console.log('跳转成功'))
+        .catch(err => console.error('跳转失败:', err))
     } else {
       errorMessage.value = response.message || '登录失败'
     }
   } catch (error) {
+    console.error('登录流程异常:', error)
     errorMessage.value = '网络错误，请稍后重试'
   } finally {
     loading.value = false

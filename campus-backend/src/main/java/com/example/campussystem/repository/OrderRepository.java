@@ -222,4 +222,34 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
      */
     @Query("SELECT o.productId, COUNT(o) as orderCount FROM Order o WHERE o.status = 3 GROUP BY o.productId ORDER BY orderCount DESC")
     List<Object[]> findPopularProductOrders();
+
+    /**
+     * 统计用户指定状态的订单数量（作为买家或卖家）
+     */
+    @Query("SELECT COUNT(o) FROM Order o WHERE (o.buyerId = :userId OR o.sellerId = :userId) AND o.status = :status")
+    long countUserOrdersByStatus(@Param("userId") Long userId, @Param("status") Integer status);
+
+    /**
+     * 计算买家已完成订单的总金额
+     */
+    @Query("SELECT COALESCE(SUM(o.amount), 0) FROM Order o WHERE o.buyerId = :buyerId AND o.status = 3")
+    BigDecimal calculateCompletedBuyerAmount(@Param("buyerId") Long buyerId);
+
+    /**
+     * 计算卖家已完成订单的总金额
+     */
+    @Query("SELECT COALESCE(SUM(o.amount), 0) FROM Order o WHERE o.sellerId = :sellerId AND o.status = 3")
+    BigDecimal calculateCompletedSellerAmount(@Param("sellerId") Long sellerId);
+
+    /**
+     * 统计用户成功交易次数（作为买家或卖家，状态为已完成）
+     */
+    @Query("SELECT COUNT(o) FROM Order o WHERE (o.buyerId = :userId OR o.sellerId = :userId) AND o.status = 3")
+    long countSuccessfulOrdersByUserId(@Param("userId") Long userId);
+
+    /**
+     * 计算用户成功交易总金额（作为买家或卖家，状态为已完成）
+     */
+    @Query("SELECT COALESCE(SUM(o.amount), 0) FROM Order o WHERE (o.buyerId = :userId OR o.sellerId = :userId) AND o.status = 3")
+    BigDecimal sumSuccessfulOrderAmountByUserId(@Param("userId") Long userId);
 }

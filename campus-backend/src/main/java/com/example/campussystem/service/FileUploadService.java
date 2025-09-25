@@ -268,9 +268,8 @@ public class FileUploadService {
      * 创建上传目录
      */
     private String createUploadDirectory(String category) throws IOException {
-        // 按日期创建子目录
-        String dateDir = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy/MM/dd"));
-        String categoryPath = Paths.get(uploadPath, category, dateDir).toString();
+        // 直接在category目录下创建，不使用日期子目录
+        String categoryPath = Paths.get(uploadPath, category).toString();
         
         Path path = Paths.get(categoryPath);
         if (!Files.exists(path)) {

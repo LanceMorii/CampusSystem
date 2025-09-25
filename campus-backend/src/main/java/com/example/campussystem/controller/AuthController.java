@@ -59,24 +59,7 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success("登录成功", response));
     }
 
-    /**
-     * 测试JWT生成（临时接口，用于验证JWT功能）
-     */
-    @PostMapping("/test-jwt")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> testJwt() {
-        // 生成测试token
-        String token = jwtUtil.generateToken(1L, "20240001", "testuser");
-        
-        Map<String, Object> result = new HashMap<>();
-        result.put("token", token);
-        result.put("userId", jwtUtil.getUserIdFromToken(token));
-        result.put("studentId", jwtUtil.getStudentIdFromToken(token));
-        result.put("username", jwtUtil.getUsernameFromToken(token));
-        result.put("role", jwtUtil.getRoleFromToken(token));
-        result.put("isValid", jwtUtil.validateToken(token));
-        
-        return ResponseEntity.ok(ApiResponse.success("JWT测试成功", result));
-    }
+
 
     /**
      * 获取当前用户详细信息（需要认证）
@@ -111,13 +94,22 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success("用户信息更新成功", updatedProfile));
     }
 
+
+
     /**
-     * 管理员测试接口
+     * 获取用户统计信息（需要认证）
      */
-    @GetMapping("/admin-test")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<ApiResponse<String>> adminTest() {
-        return ResponseEntity.ok(ApiResponse.success("管理员权限验证成功"));
+    @GetMapping("/stats")
+    @PreAuthorize("hasRole('USER')")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getUserStats() {
+        Long currentUserId = SecurityUtil.getCurrentUserId();
+        if (currentUserId == null) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.badRequest("用户未登录"));
+        }
+        
+        Map<String, Object> stats = userService.getUserTradeStats(currentUserId);
+        return ResponseEntity.ok(ApiResponse.success("获取用户统计成功", stats));
     }
 
     /**
