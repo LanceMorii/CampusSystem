@@ -249,22 +249,28 @@ const getImageUrl = (imageUrl) => {
   if (!imageUrl) return '/placeholder.png'
   
   let cleanPath = imageUrl.toString().trim()
+  
+  // 移除可能存在的引号
   if (cleanPath.startsWith('"') && cleanPath.endsWith('"')) {
     cleanPath = cleanPath.slice(1, -1)
   }
   
+  // 如果已经是完整的HTTP URL，直接返回
   if (cleanPath.startsWith('http://') || cleanPath.startsWith('https://')) {
     return cleanPath
   }
   
+  // 如果以/api开头，说明是完整的API路径
   if (cleanPath.startsWith('/api')) {
     return `http://localhost:8080${cleanPath}`
   }
   
+  // 如果以/开头，添加API前缀
   if (cleanPath.startsWith('/')) {
     return `http://localhost:8080/api/v1/files/view${cleanPath}`
   }
   
+  // 其他情况，作为相对路径处理
   return `http://localhost:8080/api/v1/files/view/${cleanPath}`
 }
 
